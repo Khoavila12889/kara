@@ -1,29 +1,66 @@
 import React, { useRef, useState, useEffect } from 'react';
 import ReactPlayer from 'react-player/youtube';
-import { Song } from './types';
+import { ExtendedSong } from './types';
 import { logger } from './logger';
 
 interface YouTubePlayerProps {
-  song: Song | undefined;
+  song: ExtendedSong | undefined;
   playing: boolean;
+  playRequestTimestamp?: number;
   onEnded: () => void;
   onError: (error: any) => void;
   className?: string;
 }
 
-const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, className }) => {
+const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, className, playRequestTimestamp }) => {
   const playerRef = useRef<ReactPlayer>(null);
   const [isReady, setIsReady] = useState(false);
+  const prevPlayingRef = useRef(playing);
 
   useEffect(() => {
-    if (isReady && song) {
-      // The 'playing' prop should handle this automatically.
+    // This effect manually controls playback to bypass browser autoplay policies
+    // Check if playing state changed from false to true (a play request)
+    const wasPlaying = prevPlayingRef.current;
+    prevPlayingRef.current = playing;
+
+    if (!isReady || !playerRef.current) {
+      // If not ready but playing is true, we'll play when ready
+      if (playing && !isReady) {
+        // We'll handle this in handleReady
+      }
+      return;
     }
-  }, [isReady, song, playing]);
+
+    const internalPlayer = playerRef.current.getInternalPlayer();
+    if (!internalPlayer) {
+      return;
+    }
+
+    if (playing) {
+      if (typeof internalPlayer.playVideo === 'function') {
+        internalPlayer.playVideo();
+        logger.log('Playing video via manual control');
+      }
+    } else {
+      if (typeof internalPlayer.pauseVideo === 'function') {
+        internalPlayer.pauseVideo();
+        logger.log('Pausing video via manual control');
+      }
+    }
+  }, [playing, isReady, song]); // Depend on song object now
 
   const handleReady = () => {
     setIsReady(true);
     logger.log('Player is ready!');
+
+    // If playing was requested while loading, play now
+    if (playing) {
+      const internalPlayer = playerRef.current?.getInternalPlayer();
+      if (internalPlayer && typeof internalPlayer.playVideo === 'function') {
+        internalPlayer.playVideo();
+        logger.log('Playing video after ready');
+      }
+    }
   };
 
   const handleError = (error: any) => {
@@ -45,8 +82,8 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
       <ReactPlayer
         ref={playerRef}
         url={`https://www.youtube.com/watch?v=${song.id}`}
-        playing={playing}
-        controls={true}
+        playing={playing} // Still pass playing prop, it's good for initial state
+        controls={false}
         width="100%"
         height="100%"
         onReady={handleReady}

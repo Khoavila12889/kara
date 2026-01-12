@@ -22,9 +22,55 @@ body {
 
 /* TvView specific styles */
 .tv-view-container {
-  overflow: hidden;
   height: 100vh;
   width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+
+/* RemoteView specific styles */
+.remote-view-container {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Main content area that should scroll on mobile */
+.main-content-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Container for the entire remote view with proper flex layout */
+.remote-view-container {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Fixed header */
+.remote-header {
+  flex-shrink: 0;
+  z-index: 40;
+}
+
+/* Fixed now playing section */
+.now-playing-fixed {
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+/* Scrollable content area */
+.tabs-content-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: 1rem;
 }
 
 .tv-view-fullscreen {
@@ -498,27 +544,44 @@ body {
 html, body {
   overflow-x: hidden;
   max-width: 100%;
+  /* Fix for mobile scrolling issues */
+  -webkit-overflow-scrolling: touch;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Better touch targets on mobile */
 @media (max-width: 768px) {
-  button, 
-  [role="button"],
+  button:not(.ant-btn),
+  [role="button"]:not(.ant-btn),
   input,
   select,
   textarea {
     min-height: 44px;
     min-width: 44px;
   }
-  
+
+  /* Override for Ant Design buttons to prevent oversized icons */
+  .ant-btn {
+    min-height: auto !important;
+    min-width: auto !important;
+  }
+
+  .ant-btn[type="text"] {
+    min-height: 24px !important;
+    min-width: 24px !important;
+    padding: 2px !important;
+  }
+
   /* Adjust font sizes for mobile */
   .text-mobile-sm {
     font-size: 0.875rem;
   }
-  
+
   .text-mobile-base {
     font-size: 1rem;
   }
+
 }
 
 /* Smooth transitions */
@@ -527,8 +590,133 @@ html, body {
 }
 
 /* Prevent text selection on interactive elements */
-button, 
+button,
 [role="button"] {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Pulse glow animation for player */
+.pulse-glow {
+  animation: pulseGlow 1.5s infinite;
+}
+
+@keyframes pulseGlow {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.4));
+  }
+  50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 12px rgba(34, 197, 94, 0.9));
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.4));
+  }
+}
+
+/* Song list item styles */
+.song-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: linear-gradient(to right, #6a11cb, #2575fc); /* Purple-blue gradient */
+  transition: background 0.2s ease;
+}
+
+.song-item:hover {
+  background: linear-gradient(to right, #8c42ed, #4a91f5); /* Lighter purple-blue gradient on hover */
+}
+
+.song-thumb {
+  width: 64px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.song-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-title {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.song-title.priority {
+  color: #facc15; /* yellow-400 */
+}
+
+.song-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.icon-only {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 4px;
+  color: #d1d5db;
+  opacity: 0.75;
+  transition: all 0.2s ease;
+}
+
+.icon-only:hover {
+  color: #ffffff;
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.icon-only.priority {
+  color: #facc15;
+  opacity: 1;
+}
+
+/* Playlist item styles */
+.playlist-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(31, 41, 55, 0.55);
+  transition: background 0.2s ease;
+}
+
+.playlist-item:hover {
+  background: rgba(55, 65, 81, 0.85);
+}
+
+.playlist-thumb {
+  width: 64px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.playlist-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.playlist-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
