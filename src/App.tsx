@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import TvView from './TvView';
 import RemoteView from './RemoteView';
+import YouTubeAuthCallback from './YouTubeAuthCallback';
 import ErrorBoundary from './ErrorBoundary'; // Import ErrorBoundary
 import './App.css';
 
@@ -47,6 +48,7 @@ function App() {
             }
           />
           <Route path="/remote" element={<RemoteView />} />
+          <Route path="/youtube-auth" element={<YouTubeAuthCallback />} />
         </Routes>
       </Router>
     </ConfigProvider>

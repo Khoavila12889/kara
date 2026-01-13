@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, set, runTransaction } from 'firebase/database';
 import { database } from './firebase';
+import { DatabaseReference } from 'firebase/database';
 import { QRCodeCanvas } from 'qrcode.react';
 
 import YouTubePlayer from './YouTubePlayer';
@@ -43,7 +44,7 @@ const TvView = () => {
     const connectToRoom = (id: string) => {
       logger.log(`Connecting to room: ${id}`);
       setRoomId(id);
-      const roomRef = ref(database, 'rooms/' + id);
+      const roomRef = ref(database as DatabaseReference, 'rooms/' + id);
 
       // Thiết lập timeout cho việc kết nối
       const connectionTimeout = setTimeout(() => {
@@ -95,7 +96,7 @@ const TvView = () => {
       setRoomId(newId);
       localStorage.setItem('karaokeRoomId', newId);
 
-      const roomRef = ref(database, 'rooms/' + newId);
+      const roomRef = ref(database as DatabaseReference, 'rooms/' + newId);
       logger.log('Setting initial room state in Firebase...');
       try {
         await set(roomRef, {
@@ -142,7 +143,7 @@ const TvView = () => {
     // Autoplay feature: if the player is stopped but there are songs in the queue, start playing the first one.
     // This now correctly prioritizes priority songs.
     if (useFirebase && roomId && !roomData.playing && roomData.currentIndex === -1 && roomData.queue?.length > 0) {
-      const roomRef = ref(database, 'rooms/' + roomId);
+      const roomRef = ref(database as DatabaseReference, 'rooms/' + roomId);
       runTransaction(roomRef, (currentData) => {
         if (!currentData) return;
         // Check again inside transaction to prevent race conditions
@@ -166,7 +167,7 @@ const TvView = () => {
   const handleNextSong = () => {
     if (!useFirebase || !roomId) return;
 
-    const roomRef = ref(database, 'rooms/' + roomId);
+    const roomRef = ref(database as DatabaseReference, 'rooms/' + roomId);
     runTransaction(roomRef, (currentData) => {
       if (!currentData) {
         logger.warn('handleNextSong: No current data in transaction.');
@@ -240,7 +241,7 @@ const TvView = () => {
   const handleSelectSong = (song: ExtendedSong) => {
     if (!useFirebase || !roomId) return;
 
-    const roomRef = ref(database, 'rooms/' + roomId);
+    const roomRef = ref(database as DatabaseReference, 'rooms/' + roomId);
     runTransaction(roomRef, (currentData) => {
       if (!currentData || !currentData.queue) return currentData;
 
@@ -307,7 +308,7 @@ const TvView = () => {
 
     if (roomData.playing && currentSong) {
       if (useFirebase && roomId) {
-        set(ref(database, 'rooms/' + roomId + '/playing'), false);
+        set(ref(database as DatabaseReference, 'rooms/' + roomId + '/playing'), false);
       }
     }
   };

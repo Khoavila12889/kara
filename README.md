@@ -61,15 +61,105 @@ Chức năng tìm kiếm cho phép người dùng tìm video karaoke trên YouTu
     *   Nhấn nút này sẽ gọi hàm `handleRemoveSong`, xóa bài hát đó khỏi `queue` trên Firebase.
     *   Logic này cũng xử lý trường hợp bài hát đang phát hoặc bài hát đứng trước bài đang phát bị xóa để đảm bảo `currentIndex` luôn hợp lệ.
 
+## Chế độ Nghe nhạc (Music Mode) - Tính năng mới
+
+Từ phiên bản 1.1, T-Karaoke hỗ trợ thêm chế độ "Nghe nhạc" bên cạnh chế độ "Karaoke" truyền thống.
+
+### 1. Chuyển đổi chế độ
+*   Người dùng có thể chuyển đổi giữa hai chế độ: "🎤 Karaoke" và "🎧 Nghe nhạc" trên giao diện điều khiển (`RemoteView.tsx`)
+*   Chế độ hiện tại được lưu trữ trong Firebase Realtime Database theo cấu trúc:
+```json
+"rooms": {
+  "<roomId>": {
+    ...
+    "mode": "karaoke" // hoặc "music"
+  }
+}
+```
+
+### 2. Chế độ Karaoke
+*   **Mục tiêu**: Phát các video karaoke (phiên bản không lời)
+*   **Tìm kiếm**: Tự động thêm từ khóa "karaoke" vào truy vấn tìm kiếm
+*   **Giao diện**: Tập trung vào trải nghiệm hát karaoke
+
+### 3. Chế độ Nghe nhạc
+*   **Mục tiêu**: Phát các video âm nhạc (phiên bản có lời)
+*   **Tìm kiếm**: Không tự động thêm từ khóa "karaoke", tìm kiếm bài hát có lời
+*   **Giao diện**: Tối ưu cho trải nghiệm nghe nhạc
+
+## Cơ chế xác thực OAuth2 (Authentication System)
+
+T-Karaoke sử dụng cơ chế xác thực OAuth2 với PKCE (Proof Key for Code Exchange) để bảo mật việc truy cập YouTube API.
+
+### 1. Cấu trúc hệ thống xác thực
+*   **Frontend**: Giao diện người dùng (T-Karaoke app)
+*   **Auth Proxy Server**: Máy chủ trung gian xử lý trao đổi mã xác thực (auth-proxy-server)
+*   **Google OAuth2**: Dịch vụ xác thực của Google
+
+### 2. Luồng xác thực OAuth2 + PKCE
+
+#### Giai đoạn 1: Khởi tạo yêu cầu xác thực
+1.  Người dùng nhấn "Đăng nhập YouTube" trên frontend
+2.  Frontend tạo `code_verifier` (chuỗi ngẫu nhiên 128 ký tự) và lưu vào `sessionStorage`
+3.  Frontend tạo `code_challenge` bằng cách SHA256 hash `code_verifier` và mã hóa Base64URL
+4.  Frontend xây dựng URL xác thực OAuth2 với các tham số:
+    *   `client_id`: YouTube OAuth2 Client ID
+    *   `redirect_uri`: `https://youtube.goldenfarm.vn/youtube-auth`
+    *   `response_type`: `code`
+    *   `scope`: `https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email`
+    *   `code_challenge`: Mã challenge đã tạo
+    *   `code_challenge_method`: `S256`
+5.  Frontend chuyển hướng người dùng đến URL xác thực của Google
+
+#### Giai đoạn 2: Xác thực với Google
+6.  Người dùng đăng nhập vào tài khoản Google và cấp quyền
+7.  Google chuyển hướng người dùng trở lại `https://youtube.goldenfarm.vn/youtube-auth` với `?code=<authorization_code>` trong URL
+
+#### Giai đoạn 3: Trao đổi mã xác thực lấy token
+8.  `YouTubeAuthCallback.tsx` nhận `authorization_code` từ URL
+9.  Frontend gửi `authorization_code` và `code_verifier` đến Auth Proxy Server tại endpoint `https://youtube.goldenfarm.vn/api/youtube/callback`
+10. Auth Proxy Server gửi yêu cầu đến Google OAuth2 token endpoint để đổi `authorization_code` lấy `access_token`
+11. Auth Proxy Server sử dụng `access_token` để lấy thông tin người dùng từ Google userinfo endpoint
+12. Auth Proxy Server trả về `access_token` và `user_info` cho frontend
+13. Frontend lưu `access_token` vào `localStorage` và cập nhật trạng thái xác thực
+
+### 3. Cấu hình xác thực
+
+#### File cấu hình frontend (`.env`):
+```env
+VITE_YOUTUBE_API_KEY=your_youtube_api_key
+VITE_YOUTUBE_CLIENT_ID=your_youtube_client_id
+VITE_AUTH_PROXY_URL=https://youtube.goldenfarm.vn/api/youtube/callback
+```
+
+#### File cấu hình auth proxy server (`auth-proxy-server/.env`):
+```env
+YOUTUBE_CLIENT_ID=your_youtube_client_id
+YOUTUBE_CLIENT_SECRET=your_youtube_client_secret
+FRONTEND_URL=https://youtube.goldenfarm.vn
+REDIRECT_URI=https://youtube.goldenfarm.vn/youtube-auth
+PORT=3001
+NODE_ENV=production
+```
+
+### 4. Cơ chế bảo mật
+*   **PKCE**: Ngăn chặn tấn công "Authorization Code Interception" trên ứng dụng public client
+*   **CORS**: Được cấu hình chặt chẽ chỉ cho phép các domain được tin cậy
+*   **Token lưu trữ**: `access_token` được lưu trong `localStorage` của trình duyệt
+*   **Token hết hạn**: Hệ thống kiểm tra thời gian hết hạn và tự động xóa token khi hết hạn
+
 ## Chi tiết kỹ thuật
 
 ### Cấu trúc dự án
 *   `TvView.tsx`: Giao diện cho màn hình lớn, chịu trách nhiệm phát video và hiển thị mã QR.
-*   `RemoteView.tsx`: Giao diện cho các thiết bị điều khiển, chứa logic tìm kiếm, thêm/xóa/ưu tiên bài hát.
+*   `RemoteView.tsx`: Giao diện cho các thiết bị điều khiển, chứa logic tìm kiếm, thêm/xóa/ưu tiên bài hát và chuyển đổi chế độ.
 *   `Playlist.tsx`: Component con để hiển thị danh sách bài hát, được sử dụng bởi cả `TvView` và `RemoteView`.
 *   `YouTubePlayer.tsx`: Component để nhúng trình phát YouTube và quản lý các sự kiện của nó.
 *   `firebase.ts`: Khởi tạo và cấu hình kết nối tới Firebase.
 *   `useSearch.ts`: **(Quan trọng)** Hook tùy chỉnh chứa toàn bộ logic tìm kiếm và cache đã được tối ưu.
+*   `useYouTubeAuth.ts`: Hook quản lý trạng thái xác thực YouTube với OAuth2 + PKCE.
+*   `YouTubeAuthCallback.tsx`: Component xử lý callback từ Google OAuth2 và hoàn tất quá trình xác thực.
+*   `auth-proxy-server/`: Thư mục chứa máy chủ xác thực OAuth2 trung gian.
 
 ### Cơ sở dữ liệu (Firebase)
 Dự án sử dụng Firebase Realtime Database để đồng bộ trạng thái giữa TV và các điều khiển. Dữ liệu được lưu trữ theo cấu trúc:
@@ -82,7 +172,8 @@ Dự án sử dụng Firebase Realtime Database để đồng bộ trạng thái
     ],
     "currentIndex": 0,
     "playing": true,
-    "playRequestTimestamp": 167...
+    "playRequestTimestamp": 167...,
+    "mode": "karaoke" // hoặc "music"
   }
 }
 ```
@@ -90,6 +181,7 @@ Dự án sử dụng Firebase Realtime Database để đồng bộ trạng thái
 *   `currentIndex`: Index của bài hát đang phát trong mảng `queue`.
 *   `playing`: Trạng thái `true`/`false` của trình phát.
 *   `playRequestTimestamp`: Timestamp để buộc trình phát YouTube đồng bộ lại khi có yêu cầu phát mới.
+*   `mode`: Chế độ hiện tại của phòng ("karaoke" hoặc "music").
 
 ### Phân quyền
 Hiện tại, dự án không có hệ thống phân quyền phức tạp. Bất kỳ ai có liên kết đến phòng điều khiển (`remoteUrl`) đều có toàn quyền thêm, xóa, và ưu tiên bài hát.
@@ -103,7 +195,7 @@ Trong file `TvView.tsx`, có một hàm `handleSetPriorityDevice` đã bị vô 
     npm install
     ```
 
-2.  **Cấu hình API Key**:
+2.  **Cấu hình API Key và xác thực OAuth2**:
     *   Bạn cần có một API Key từ YouTube Data API v3.
     *   Tạo file `src/config.ts` từ `src/config.example.ts` (nếu có) hoặc tạo mới.
     *   Thêm API key của bạn vào file:
@@ -111,13 +203,24 @@ Trong file `TvView.tsx`, có một hàm `handleSetPriorityDevice` đã bị vô 
         // src/config.ts
         export const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
         ```
+    *   Cấu hình OAuth2 Client ID/Secret trong `.env` files (xem phần "Cơ chế xác thực OAuth2" ở trên)
     *   Tương tự, bạn cũng cần cấu hình `firebaseConfig` trong `src/firebase.ts` với thông tin Firebase project của bạn.
 
 3.  **Chạy dự án**:
     ```bash
+    # Chạy frontend
+    npm run dev
+
+    # Chạy auth proxy server (trong thư mục riêng)
+    cd auth-proxy-server
     npm run dev
     ```
-    Ứng dụng sẽ chạy, và bạn có thể truy cập vào các địa chỉ được cung cấp trên terminal. Để sử dụng tính năng QR, hãy truy cập bằng địa chỉ IP mạng.
+
+4.  **Triển khai sản phẩm**:
+    *   Build frontend: `npm run build`
+    *   Build auth proxy server: `cd auth-proxy-server && npm run build`
+    *   Cấu hình reverse proxy (nginx) để chuyển tiếp `/api/*` đến auth proxy server
+    *   Cập nhật cấu hình CORS và URL trong file `.env` cho môi trường sản phẩm
 
 ---
 
@@ -171,4 +274,9 @@ Dưới đây là một số ý tưởng và chức năng có thể được ph�
     *   Bảng điều khiển (dashboard) cho Host để xem thống kê phòng.
 
 *   **Xử lý lỗi và Thông báo**:
-    *   Hiển thị thông báo lỗi thân thiện hơn cho người dùng khi có sự cố (mất kết nối, API lỗi, v.v.).
+    *   Hiển thị thông báo lỗi thân thiện hơn cho người dùng khi có sự cố (mất kết nối, API lỗi, xác thực thất bại, v.v.).
+
+*   **Cải tiến hệ thống xác thực**:
+    *   Hỗ trợ refresh token để tự động làm mới access token khi hết hạn.
+    *   Cơ chế đăng xuất toàn cục.
+    *   Quản lý nhiều tài khoản YouTube.

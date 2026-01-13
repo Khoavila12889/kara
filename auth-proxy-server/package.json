@@ -1,0 +1,39 @@
+{
+  "name": "tkaraoke-auth-proxy",
+  "version": "1.1.0",
+  "description": "Secure OAuth2 proxy for T-Karaoke app with PKCE flow",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "postinstall": "npm run build"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.15",
+    "@types/express": "^4.17.20",
+    "@types/node": "^20.8.10",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "oauth2",
+    "pkce",
+    "youtube-api",
+    "karaoke",
+    "proxy"
+  ],
+  "author": "T-Karaoke Team",
+  "license": "MIT"
+}

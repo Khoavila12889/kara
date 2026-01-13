@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import useDebounce from './useDebounce';
+import { useState, useRef, useCallback } from 'react';
+// import useDebounce from './useDebounce'; // Comment out unused import
 import { YOUTUBE_API_KEY } from './config';
 import { Song, ExtendedSong } from './types';
 import { logger } from './logger';
@@ -21,12 +21,30 @@ const resetApiUsageDaily = (usage: number) => {
     return usage;
 };
 
-const calculateApiUsage = (itemCount: number, isNewSearch: boolean) => {
-  // Each successful search API call costs 100 units.
-  return 100;
+const CACHE_PREFIX = 'yt_search_cache_';
+const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+
+const getCachedSearch = (q: string) => {
+  const key = CACHE_PREFIX + q;
+  const data = localStorage.getItem(key);
+  if (!data) return null;
+  
+  try {
+    const parsed = JSON.parse(data);
+    if (Date.now() - parsed.timestamp < CACHE_TTL) return parsed;
+  } catch {}
+  localStorage.removeItem(key);
+  return null;
 };
 
-const MAX_CACHE_SIZE = 5; // Limits the number of search queries to cache in memory.
+const setCachedSearch = (q: string, items: ExtendedSong[], nextPageToken?: string) => {
+  const key = CACHE_PREFIX + q;
+  localStorage.setItem(key, JSON.stringify({
+    items,
+    nextPageToken,
+    timestamp: Date.now()
+  }));
+};
 
 export const useSearch = () => {
   // Search State
@@ -36,7 +54,6 @@ export const useSearch = () => {
   const [error, setError] = useState<string | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | undefined>();
   const lastKeywordRef = useRef<string>('');
-  const [searchCache, setSearchCache] = useState(new Map());
   const searchAbortControllerRef = useRef<AbortController | null>(null);
 
   // Trending State
@@ -59,16 +76,11 @@ export const useSearch = () => {
           localStorage.setItem('ytApiUsage', newUsage.toString());
           console.log('Current API Usage:', newUsage);
           console.log('As percentage:', (newUsage / 10000 * 100).toFixed(2) + '%');
-          if (newUsage > 9000) {
-              logger.warn(`API quota warning: ${newUsage}/10000 units used.`);
-              setError(`Cảnh báo: Hạn ngạch API sắp hết! (${newUsage}/10000)`);
-          }
           return newUsage;
       });
   };
 
   const search = useCallback(async (rawQuery: string, pageToken?: string) => {
-    // Abort previous request
     searchAbortControllerRef.current?.abort();
     searchAbortControllerRef.current = new AbortController();
     const { signal } = searchAbortControllerRef.current;
@@ -79,98 +91,71 @@ export const useSearch = () => {
       return;
     }
     lastRequestRef.current = now;
-
+  
     const q = normalizeQuery(rawQuery);
     if (!q) return;
-
-    // 1. Cache-first check for initial search
-    if (!pageToken && searchCache.has(q)) {
-      const cached = searchCache.get(q);
-      if (Date.now() - cached.timestamp < 10 * 60 * 1000) { // 10-minute TTL
+  
+    if (!pageToken) {
+      const cached = getCachedSearch(q);
+      if (cached) {
         setResults(cached.items);
         setNextPageToken(cached.nextPageToken);
         lastKeywordRef.current = q;
         return;
       }
     }
-
-    if (YOUTUBE_API_KEY === 'YOUR_YOUTUBE_API_KEY_HERE') {
-      setError('Missing YouTube API key');
-      return;
-    }
-
+  
     setLoading(true);
     setError(null);
-    if (!pageToken) {
-      setResults([]);
-    }
     
     try {
-      let url =
-        `https://www.googleapis.com/youtube/v3/search` +
-        `?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(q + ' karaoke')}` +
-        `&fields=items(id/videoId,snippet/title,snippet/thumbnails/default),nextPageToken&key=${YOUTUBE_API_KEY}`;
-
-      if (pageToken) {
-        url += `&pageToken=${pageToken}`;
-      }
-
-      const res = await fetch(url, { signal }); // Pass the signal
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-
-      // Track API usage after successful fetch
-      const actualCost = calculateApiUsage(data.items?.length || 0, !pageToken);
-      trackApiUsage(actualCost);
-
-      const newItems: ExtendedSong[] = (data.items || []).map((item: any) => ({
+      // Step 1: Search for video IDs
+      let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(q + ' karaoke')}&fields=items(id/videoId,snippet(title,thumbnails/default/url)),nextPageToken&key=${YOUTUBE_API_KEY}`;
+      if (pageToken) searchUrl += `&pageToken=${pageToken}`;
+  
+      const searchRes = await fetch(searchUrl, { signal });
+      const searchData = await searchRes.json();
+      if (searchData.error) throw new Error(searchData.error.message);
+  
+      const videoIds = searchData.items?.map((i: any) => i.id.videoId) || [];
+      let extendedItems: ExtendedSong[] = searchData.items?.map((item: any) => ({
         id: item.id.videoId,
         title: item.snippet.title,
         thumbnail: item.snippet.thumbnails.default.url,
-        isPriority: false
-      }));
-
-      // 2. Update state and cache
-      if (pageToken) {
-        // Append results
-        const cached = searchCache.get(q) || { items: [] };
-        const allItems = [...cached.items, ...newItems];
-        setResults(allItems);
-        setSearchCache(prevCache => {
-          const newCache = new Map(prevCache);
-          newCache.set(q, {
-            items: allItems,
-            nextPageToken: data.nextPageToken,
-            timestamp: Date.now()
+        isPriority: false,
+      })) || [];
+  
+      // Step 2: Fetch duration and viewCount for the found videos
+      if (videoIds.length > 0) {
+        const detailUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds.join(',')}&fields=items(id,contentDetails(duration),statistics(viewCount))&key=${YOUTUBE_API_KEY}`;
+        const detailRes = await fetch(detailUrl, { signal });
+        const detailData = await detailRes.json();
+  
+        if (!detailData.error) {
+          const detailsMap = new Map(detailData.items?.map((i: any) => [i.id, i]) || []);
+          extendedItems = extendedItems.map(item => {
+            const detail = detailsMap.get(item.id);
+            return {
+              ...item,
+              duration: (detail as any)?.contentDetails?.duration,
+              viewCount: (detail as any)?.statistics?.viewCount,
+            };
           });
-          // LRU cleanup
-          if (newCache.size > MAX_CACHE_SIZE) {
-            const oldestKey = newCache.keys().next().value; // Map keys are ordered by insertion
-            newCache.delete(oldestKey);
-          }
-          return newCache;
-        });
-      } else {
-        // Set new results
-        setResults(newItems);
-        setSearchCache(prevCache => {
-          const newCache = new Map(prevCache);
-          newCache.set(q, {
-            items: newItems,
-            nextPageToken: data.nextPageToken,
-            timestamp: Date.now()
-          });
-          // LRU cleanup
-          if (newCache.size > MAX_CACHE_SIZE) {
-            const oldestKey = newCache.keys().next().value; // Map keys are ordered by insertion
-            newCache.delete(oldestKey);
-          }
-          return newCache;
-        });
+        }
       }
       
-      setNextPageToken(data.nextPageToken);
+      // Update state and cache
+      const existingItems = pageToken ? (getCachedSearch(q)?.items || []) : [];
+      const allItems = [...existingItems, ...extendedItems];
+      
+      setResults(allItems);
+      setCachedSearch(q, allItems, searchData.nextPageToken);
+      
+      setNextPageToken(searchData.nextPageToken);
       lastKeywordRef.current = q;
+
+      trackApiUsage(100 + 1); // search (100) + videos.list (1)
+  
     } catch (err: any) {
       if (err.name === 'AbortError') {
         logger.info('Search request aborted.');
@@ -181,7 +166,9 @@ export const useSearch = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchCache]); // Dependency on searchCache
+  }, []);
+
+  const clearResults = useCallback(() => setResults([]), []);
 
   const fetchTrending = useCallback(async () => {
     const cacheKey = 'trending_songs_vn';
@@ -255,5 +242,6 @@ export const useSearch = () => {
     trendingError,
     fetchTrending,
     apiUsage,
+    clearResults,
   };
 };
