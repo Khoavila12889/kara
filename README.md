@@ -398,3 +398,6 @@ Dưới đây là những cập nhật mới nhất đã được tích hợp v�
     *   Đồng bộ hóa văn bản và nhãn giữa các thành phần
     *   Cải thiện trải nghiệm người dùng trên cả hai chế độ Karaoke và Nghe nhạc
     *   Đảm bảo các hành động giống nhau có phản hồi nhất quán
+=======
+# kara
+
