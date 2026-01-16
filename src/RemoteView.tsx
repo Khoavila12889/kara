@@ -1,15 +1,15 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ref, onValue, runTransaction, set } from 'firebase/database';
+import { ref, runTransaction, set, getDatabase } from 'firebase/database';
 import { database } from './firebase';
 import { DatabaseReference } from 'firebase/database';
 import Playlist from './Playlist';
 import YouTubePlaylistManager from './YouTubePlaylistManager';
-import { Song, ExtendedSong, RoomMode } from './types';
+import { RoomData, ExtendedSong, RoomMode, BackgroundOption, YouTubePlaylist, Song } from './types';
 import { logger } from './logger';
 import { useSearch } from './useSearch';
 import { useYouTubeAuth } from './useYouTubeAuth';
-import { Button, Input, Tabs, Spin, Alert, Badge, Modal, Row, Col, Tag, Divider, List, Card, Avatar } from 'antd';
+import { Button, Input, Tabs, Spin, Alert, Badge, Modal, Row, Col, Tag, Divider, List, Card, Avatar, Switch, Segmented } from 'antd';
 import {
   SearchOutlined,
   AudioOutlined,
@@ -30,59 +30,49 @@ import {
   PlaySquareOutlined,
   UserOutlined,
   ImportOutlined,
-  LogoutOutlined
+  LogoutOutlined,
+  SkinOutlined,
+  DesktopOutlined,
+  ToolOutlined
 } from '@ant-design/icons';
-
-interface RoomData {
-  queue: ExtendedSong[];
-  currentIndex: number;
-  playing: boolean;
-  mode?: RoomMode;
-  musicSource?: {
-    type: 'playlist' | 'channel';
-    id: string;
-  };
-  currentPlaylistId?: string;
-}
-
-interface BackgroundOption {
-  label: string;
-  value: string;
-  theme: 'dark' | 'light';
-}
-
-interface YouTubePlaylist {
-  id: string;
-  title: string;
-  description: string;
-  thumbnail: string;
-  itemCount: number;
-}
+import { debounce } from 'lodash';
+import NowPlayingSection from './components/NowPlayingSection';
+import SearchSection from './components/SearchSection';
+import SettingsModal from './components/SettingsModal';
+import { useFirebaseRoom } from './hooks/useFirebaseRoom';
+import { useSpeechRecognition } from './hooks/useSpeechRecognition';
+import SearchTab from './components/SearchTab';
+import RemoteHeader from './components/RemoteHeader';
+import { animationStyles } from './styles/animationStyles';
 
 const RemoteView = () => {
   const [searchParams] = useSearchParams();
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [activeTab, setActiveTab] = useState('playlist'); // Mặc định hiển thị playlist trong music mode
   const [showSettings, setShowSettings] = useState(false);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
-  const [inputValue, setInputValue] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
+
   const [showYouTubePlaylistManager, setShowYouTubePlaylistManager] = useState(false);
   const [userPlaylists, setUserPlaylists] = useState<YouTubePlaylist[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
 
-  const theme = useMemo(() => {
-    const savedTheme = localStorage.getItem('app-theme') || 'light';
-    return savedTheme as 'dark' | 'light';
-  }, []);
+  const { roomData, error: firebaseRoomError, updateRoomData } = useFirebaseRoom(searchParams.get('roomId'));
+  const roomId = searchParams.get('roomId');
 
-  const background = useMemo(() => {
-    const savedBg = localStorage.getItem('app-background') || 'bg-pink-100';
-    return savedBg;
-  }, []);
+  const [background, setBackground] = useState(() => {
+    const savedBgValue = localStorage.getItem('app-background') || 'bg-gray-50';
+    const bgClassMap: Record<string, string> = {
+      'bg-1': 'custom-bg-#f8cdcd',  // light pink
+      'bg-2': 'custom-bg-#9617f7',  // purple
+      'bg-3': 'custom-bg-#fcaff5',  // light pinkish
+      'bg-4': 'custom-bg-#49f803',  // green
+    };
+    return bgClassMap[savedBgValue] || 'bg-gray-50'; // default fallback
+  });
+
 
   const {
+    query,
+    setQuery,
     results: searchResults,
     loading: searchLoading,
     error: searchError,
@@ -90,8 +80,48 @@ const RemoteView = () => {
     search,
     lastKeyword,
     apiUsage,
+    usageStats,
+    canMakeRequest,
     clearResults,
+    loadMore,
   } = useSearch();
+
+  // Handle Firebase room error
+  useEffect(() => {
+    if (firebaseRoomError) {
+      setFirebaseError(firebaseRoomError);
+    }
+  }, [firebaseRoomError]);
+
+  // Handle room mode changes, tab switching and debug search state
+  useEffect(() => {
+    if (!roomData) return;
+
+    // Sau đó chuyển tab dựa trên mode mới
+    if (roomData.mode === 'music') {
+      // Trong chế độ music, nếu đang ở tab tìm kiếm thì chuyển sang playlist
+      if (activeTab === 'search') {
+        setActiveTab('youtube-playlists');
+      }
+    } else if (roomData.mode === 'karaoke') {
+      // Trong chế độ karaoke, nếu đang ở tab youtube-playlists thì chuyển sang search
+      // Không thay đổi tab playlist, để người dùng có thể xem danh sách phát
+      if (activeTab === 'youtube-playlists') {
+        setActiveTab('search');
+      }
+    }
+
+    // Debug search state
+    logger.debug('Search state:', {
+      query,
+      results: searchResults.length,
+      loading: searchLoading,
+      error: searchError,
+      apiUsage,
+      usageStats,
+      lastKeyword
+    });
+  }, [roomData, activeTab, query, searchResults, searchLoading, searchError, apiUsage, usageStats, lastKeyword]);
 
   const {
     isAuthenticated,
@@ -102,91 +132,7 @@ const RemoteView = () => {
     isLoading: authLoading
   } = useYouTubeAuth();
 
-  const recognitionRef = useRef<any>(null);
   const lastSearchRef = useRef(0);
-  const roomIdFromUrl = searchParams.get('roomId');
-
-  // Initialize speech recognition
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'vi-VN';
-        
-        recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          setInputValue(transcript);
-          
-          if (roomData?.mode === 'karaoke') {
-            search(transcript);
-            setActiveTab('search');
-          } else {
-            // Tìm kiếm trong chế độ music - ưu tiên tìm playlist
-            searchMusicPlaylist(transcript);
-          }
-        };
-        
-        recognition.onerror = (event: any) => {
-          logger.error('Speech recognition error:', event.error);
-          setIsRecording(false);
-        };
-        
-        recognition.onend = () => setIsRecording(false);
-        recognitionRef.current = recognition;
-      }
-    }
-  }, [search, roomData?.mode]);
-
-  // Connect to Firebase room
-  useEffect(() => {
-    if (!roomIdFromUrl) {
-      setFirebaseError('Không có mã phòng trong URL. Vui lòng quét mã QR từ màn hình TV.');
-      return;
-    }
-
-    setRoomId(roomIdFromUrl);
-    const roomRef = ref(database as DatabaseReference, 'rooms/' + roomIdFromUrl);
-    
-    const unsubscribe = onValue(
-      roomRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          const newRoomData = {
-            ...data,
-            mode: data.mode ?? 'karaoke',
-            currentPlaylistId: data.currentPlaylistId || null
-          };
-          setRoomData(newRoomData);
-          
-          // Tự động chuyển tab dựa trên mode
-          if (newRoomData.mode === 'music') {
-            setActiveTab('playlist');
-          } else {
-            setActiveTab('search');
-          }
-        } else {
-          setFirebaseError(`Phòng '${roomIdFromUrl}' không tồn tại. TV có thể đã mất kết nối.`);
-        }
-      },
-      (err) => {
-        logger.error('Error listening to room changes:', err);
-        setFirebaseError('Không thể kết nối tới phòng. Vui lòng kiểm tra kết nối mạng.');
-      }
-    );
-
-    return () => unsubscribe();
-  }, [roomIdFromUrl]);
-
-  // Load user playlists khi đã xác thực
-  useEffect(() => {
-    if (isAuthenticated && roomData?.mode === 'music') {
-      loadUserPlaylists();
-    }
-  }, [isAuthenticated, roomData?.mode]);
 
   // Tìm kiếm playlist trong chế độ music
   const searchMusicPlaylist = useCallback(async (keyword: string) => {
@@ -202,7 +148,7 @@ const RemoteView = () => {
 
     setActiveTab('youtube-playlists');
     setLoadingPlaylists(true);
-    
+
     try {
       const accessToken = getAccessToken();
       const response = await fetch(
@@ -213,9 +159,9 @@ const RemoteView = () => {
           },
         }
       );
-      
+
       if (!response.ok) throw new Error('YouTube API error');
-      
+
       const data = await response.json();
       const playlists: YouTubePlaylist[] = data.items.map((item: any) => ({
         id: item.id.playlistId,
@@ -224,7 +170,7 @@ const RemoteView = () => {
         thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
         itemCount: 0
       }));
-      
+
       setUserPlaylists(playlists);
     } catch (error) {
       logger.error('Error searching playlists:', error);
@@ -236,6 +182,26 @@ const RemoteView = () => {
       setLoadingPlaylists(false);
     }
   }, [isAuthenticated, getAccessToken, login]);
+
+  const handleVoiceResult = useCallback((transcript: string) => {
+    setQuery(transcript);
+    if (roomData?.mode === 'karaoke') {
+      search(transcript);
+      setActiveTab('search');
+    } else {
+      // Tìm kiếm trong chế độ music - ưu tiên tìm playlist
+      searchMusicPlaylist(transcript);
+    }
+  }, [roomData?.mode, search, searchMusicPlaylist]);
+
+  const { isRecording, startRecording, stopRecording } = useSpeechRecognition(handleVoiceResult);
+
+  // Load user playlists khi đã xác thực
+  useEffect(() => {
+    if (isAuthenticated && roomData?.mode === 'music') {
+      loadUserPlaylists();
+    }
+  }, [isAuthenticated, roomData?.mode]);
 
   // Load danh sách playlist của user
   const loadUserPlaylists = useCallback(async () => {
@@ -273,72 +239,75 @@ const RemoteView = () => {
     }
   }, [isAuthenticated, getAccessToken]);
 
+  // Extract function to fetch playlist videos
+  const fetchPlaylistVideos = useCallback(async (playlistId: string, accessToken: string): Promise<ExtendedSong[]> => {
+    let videos: ExtendedSong[] = [];
+    let nextPageToken = '';
+
+    try {
+      do {
+        const response = await fetch(
+          `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (!response.ok) throw new Error('YouTube API error');
+
+        const data = await response.json();
+        nextPageToken = data.nextPageToken || '';
+
+        const playlistVideos: ExtendedSong[] = data.items.map((item: any) => ({
+          id: item.snippet.resourceId.videoId,
+          title: item.snippet.title,
+          channelTitle: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+          duration: '0:00',
+          isPriority: false,
+          type: 'youtube'
+        }));
+
+        videos = [...videos, ...playlistVideos];
+      } while (nextPageToken);
+    } catch (error) {
+      logger.error('Error fetching playlist videos:', error);
+      throw error;
+    }
+
+    return videos;
+  }, []);
+
   // Import playlist vào queue
   const importPlaylist = useCallback(async (playlistId: string, playlistTitle: string) => {
-    if (!roomId || !isAuthenticated) return;
+    if (!roomId || !isAuthenticated || !roomData) return;
 
     Modal.confirm({
-      title: 'Import Playlist',
-      content: `Bạn có chắc muốn import playlist "${playlistTitle}" vào danh sách phát?`,
-      okText: 'Import',
+      title: ''-'',
+      content: `Thêm "${playlistTitle}" vào danh sách phát?`,
+      okText: 'Thêm',
+      icon: null,
       cancelText: 'Hủy',
       onOk: async () => {
         try {
           const accessToken = getAccessToken();
-          
-          // Lấy tất cả video từ playlist
-          let videos: ExtendedSong[] = [];
-          let nextPageToken = '';
-          
-          do {
-            const response = await fetch(
-              `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
-              }
-            );
-            
-            if (!response.ok) throw new Error('YouTube API error');
-            
-            const data = await response.json();
-            nextPageToken = data.nextPageToken || '';
-            
-            const playlistVideos: ExtendedSong[] = data.items.map((item: any) => ({
-              id: item.snippet.resourceId.videoId,
-              title: item.snippet.title,
-              channelTitle: item.snippet.channelTitle,
-              thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-              duration: '0:00',
-              isPriority: false,
-              type: 'youtube'
-            }));
-            
-            videos = [...videos, ...playlistVideos];
-          } while (nextPageToken);
+          const videos = await fetchPlaylistVideos(playlistId, accessToken);
 
           // Cập nhật queue trong Firebase
-          const roomRef = ref(database as DatabaseReference, 'rooms/' + roomId);
-          await runTransaction(roomRef, (currentData) => {
-            if (!currentData) return null;
-            
-            const newQueue = [...videos];
-            const newCurrentIndex = currentData.currentIndex === -1 ? 0 : currentData.currentIndex;
-            const newPlaying = currentData.currentIndex === -1 ? true : currentData.playing;
-            
-            return { 
-              ...currentData, 
-              queue: newQueue, 
-              currentIndex: newCurrentIndex, 
-              playing: newPlaying,
-              currentPlaylistId: playlistId
-            };
+          const oldQueue = roomData.queue || [];
+          const isPlayingSomething = oldQueue.length > 0 && roomData.currentIndex !== -1;
+          const newQueue = [...oldQueue, ...videos];
+
+          updateRoomData({
+            queue: newQueue,
+            currentIndex: isPlayingSomething ? roomData.currentIndex : 0,
+            playing: isPlayingSomething ? roomData.playing : true,
+            currentPlaylistId: isPlayingSomething ? roomData.currentPlaylistId : playlistId
           });
 
           Modal.success({
             title: 'Thành công',
-            content: `Đã import ${videos.length} bài hát từ playlist.`
+            content: `Đã thêm ${videos.length} bài hát từ playlist.`
           });
         } catch (error) {
           logger.error('Error importing playlist:', error);
@@ -349,68 +318,91 @@ const RemoteView = () => {
         }
       }
     });
-  }, [roomId, isAuthenticated, getAccessToken]);
+  }, [roomId, roomData, isAuthenticated, getAccessToken, updateRoomData, fetchPlaylistVideos]);
+
+  // Create debounced search function
+  const debouncedSearch = useCallback(
+    debounce((keyword: string) => {
+      // Kiểm tra từ khóa
+      if (!keyword) {
+        logger.warn('Không có từ khóa tìm kiếm');
+        return;
+      }
+
+      logger.debug('HandleManualSearch called with keyword:', keyword, 'and roomData mode:', roomData?.mode);
+
+      // Luôn đảm bảo cập nhật tab trước khi tìm kiếm
+      setActiveTab('search');
+
+      // Trong cả hai chế độ, người dùng có thể tìm kiếm video
+      // Nếu người dùng muốn tìm kiếm playlist cụ thể, họ có thể chuyển sang tab 'youtube-playlists'
+      logger.debug('Executing video search for:', keyword);
+
+      // Kiểm tra xem API có khả dụng không trước khi tìm kiếm
+      if (canMakeRequest && typeof canMakeRequest === 'function') {
+        const canSearch = canMakeRequest('search');
+        logger.debug('Can make search request:', canSearch);
+
+        if (!canSearch) {
+          logger.warn('Không thể tìm kiếm do đã đạt giới hạn API');
+          Modal.warning({
+            title: 'Đã đạt giới hạn API',
+            content: 'Bạn đã đạt đến giới hạn tìm kiếm trong ngày. Vui lòng thử lại vào ngày mai.',
+          });
+          return;
+        }
+      }
+
+      // Gọi tìm kiếm video
+      // Thêm logging để theo dõi việc gọi search
+      logger.debug('Calling search function with keyword:', keyword);
+      search(keyword); // useSearch hook only accepts 2 parameters: rawQuery and pageToken
+    }, 300),
+    [search, roomData, canMakeRequest]
+  );
 
   const handleManualSearch = useCallback(() => {
-    const now = Date.now();
-    if (now - lastSearchRef.current < 800) return;
+    const keyword = query.trim();
+    debouncedSearch(keyword);
+  }, [query, debouncedSearch]);
 
-    lastSearchRef.current = now;
-    const keyword = inputValue.trim();
-    
-    if (!keyword) return;
-
-    if (roomData?.mode === 'karaoke') {
-      if (keyword.toLowerCase() !== lastKeyword.toLowerCase()) {
-        search(keyword);
-      }
-      setActiveTab('search');
-    } else {
-      searchMusicPlaylist(keyword);
+  // Handle query change with debouncing
+  const handleQueryChange = useCallback((value: string) => {
+    setQuery(value);
+    if (value.trim()) {
+      debouncedSearch(value.trim());
     }
-  }, [inputValue, lastKeyword, search, roomData?.mode, searchMusicPlaylist]);
-
-  const handleLoadMore = useCallback(() => {
-    if (!searchLoading && nextPageToken) {
-      search(lastKeyword, nextPageToken);
-    }
-  }, [searchLoading, nextPageToken, lastKeyword, search]);
+  }, [setQuery, debouncedSearch]);
 
   const handleAddSong = useCallback(async (song: ExtendedSong) => {
-    if (!roomId) return;
-    
-    const roomRef = ref(database as DatabaseReference, 'rooms/' + roomId);
+    if (!roomId || !roomData) return;
+
     try {
-      await runTransaction(roomRef, (currentData) => {
-        if (!currentData) return null;
-        
-        const queue = currentData.queue || [];
-        if (queue.some(s => s.id === song.id)) return currentData;
-        
-        const newQueue = [...queue, song];
-        const newCurrentIndex = currentData.currentIndex === -1 ? 0 : currentData.currentIndex;
-        const newPlaying = currentData.currentIndex === -1 ? true : currentData.playing;
-        
-        return { 
-          ...currentData, 
-          queue: newQueue, 
-          currentIndex: newCurrentIndex, 
-          playing: newPlaying,
-          currentPlaylistId: null // Reset playlist khi thêm bài hát riêng lẻ
-        };
+      const queue = roomData.queue || [];
+      if (queue.some((s: ExtendedSong) => s.id === song.id)) return;
+
+      const newQueue = [...queue, song];
+      const newCurrentIndex = roomData.currentIndex === -1 ? 0 : roomData.currentIndex;
+      const newPlaying = roomData.currentIndex === -1 ? true : roomData.playing;
+
+      updateRoomData({
+        queue: newQueue,
+        currentIndex: newCurrentIndex,
+        playing: newPlaying,
+        currentPlaylistId: null // Reset playlist khi thêm bài hát riêng lẻ
       });
     } catch (err) {
-      Modal.error({ 
-        title: 'Lỗi', 
-        content: 'Thêm bài hát thất bại.' 
+      Modal.error({
+        title: 'Lỗi',
+        content: 'Thêm bài hát thất bại.'
       });
       logger.error('Failed to add song:', err);
     }
-  }, [roomId]);
+  }, [roomId, roomData, updateRoomData]);
 
   const handleSetPriority = useCallback((songToPrioritize: ExtendedSong) => {
     if (!roomId || !roomData) return;
-    
+
     const { queue, currentIndex } = roomData;
     if (!queue) return;
 
@@ -423,7 +415,7 @@ const RemoteView = () => {
     } else {
       const [song] = newQueue.splice(songIndex, 1);
       song.isPriority = !song.isPriority;
-      
+
       if (song.isPriority) {
         const nextIndex = currentIndex === -1 ? 0 : currentIndex + 1;
         newQueue.splice(nextIndex, 0, song);
@@ -438,118 +430,111 @@ const RemoteView = () => {
       isPriority: song.id === songToPrioritize.id ? song.isPriority : false
     }));
 
-    set(ref(database as DatabaseReference, `rooms/${roomId}/queue`), newQueue);
-  }, [roomId, roomData]);
+    updateRoomData({ queue: newQueue });
+  }, [roomId, roomData, updateRoomData]);
 
   const handleRemoveSong = useCallback((songId: string) => {
     if (!roomId || !roomData?.queue) return;
-    
+
     const { queue, currentIndex } = roomData;
-    const newQueue = queue.filter(s => s.id !== songId);
-    const removedIndex = queue.findIndex(s => s.id === songId);
-    
+    const newQueue = queue.filter((s: ExtendedSong) => s.id !== songId);
+    const removedIndex = queue.findIndex((s: ExtendedSong) => s.id === songId);
+
     let newCurrentIndex = currentIndex;
-    
+
     if (removedIndex < currentIndex) {
       newCurrentIndex--;
     } else if (removedIndex === currentIndex) {
       newCurrentIndex = newQueue.length > 0 ? currentIndex % newQueue.length : -1;
     }
 
-    set(ref(database as DatabaseReference, `rooms/${roomId}`), {
-      ...roomData,
+    updateRoomData({
       queue: newQueue,
       currentIndex: newCurrentIndex
     });
-  }, [roomId, roomData]);
+  }, [roomId, roomData, updateRoomData]);
 
   const handleVoiceSearch = useCallback(() => {
-    if (!recognitionRef.current) {
-      Modal.error({ 
-        title: 'Lỗi', 
-        content: 'Trình duyệt của bạn không hỗ trợ tìm kiếm bằng giọng nói.' 
+    if (typeof (window as any).SpeechRecognition === 'undefined' &&
+        typeof (window as any).webkitSpeechRecognition === 'undefined') {
+      Modal.error({
+        title: 'Lỗi',
+        content: 'Trình duyệt của bạn không hỗ trợ tìm kiếm bằng giọng nói.'
       });
       return;
     }
 
-    try {
-      if (isRecording) {
-        recognitionRef.current.stop();
-      } else {
-        recognitionRef.current.start();
-        setIsRecording(true);
-      }
-    } catch (err) {
-      logger.error('Could not start speech recognition:', err);
-      setIsRecording(false);
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
     }
-  }, [isRecording]);
+  }, [isRecording, startRecording, stopRecording]);
 
   const handlePlayerControl = useCallback((action: 'toggle' | 'next' | 'prev') => {
     if (!roomId || !roomData) return;
-    
+
     const { playing, queue, currentIndex } = roomData;
-    
+
     if (action === 'toggle') {
-      set(ref(database as DatabaseReference, `rooms/${roomId}/playing`), !playing);
+      updateRoomData({ playing: !playing });
     } else if (action === 'next') {
       if (!queue || queue.length === 0) return;
       const nextIndex = (currentIndex + 1) % queue.length;
-      set(ref(database as DatabaseReference, `rooms/${roomId}/currentIndex`), nextIndex);
+      updateRoomData({ currentIndex: nextIndex });
     } else if (action === 'prev') {
       if (!queue || queue.length === 0) return;
       const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
-      set(ref(database as DatabaseReference, `rooms/${roomId}/currentIndex`), prevIndex);
+      updateRoomData({ currentIndex: prevIndex });
     }
-  }, [roomId, roomData]);
+  }, [roomId, roomData, updateRoomData]);
 
-  const handleThemeChange = useCallback((newTheme: 'dark' | 'light', newBackground?: string) => {
-    localStorage.setItem('app-theme', newTheme);
-    if (newBackground) {
-      localStorage.setItem('app-background', newBackground);
-    }
-    window.location.reload();
-  }, []);
   
 
-  const SongListItem = useCallback(({ song }: { song: ExtendedSong }) => (
-    <div className="song-item group">
+  const SongListItemComponent = ({ song }: { song: ExtendedSong }) => (
+    <div className="playlist-item group bg-gray-100 hover:bg-gray-200">
       <img
         src={song.thumbnail}
         alt={song.title}
-        className="song-thumb"
+        className="playlist-thumb"
         loading="lazy"
       />
-      <div className="song-info">
-        <p className={`song-title ${song.isPriority ? 'priority' : ''}`}>
+      <div className="flex-1 min-w-0">
+        <p className={`font-semibold break-words ${song.isPriority ? 'text-yellow-600' : 'text-gray-800'}`}>
           {song.title}
         </p>
-        <p className="song-channel">{song.channelTitle}</p>
+        <p className="text-sm truncate text-gray-600">{song.channelTitle}</p>
       </div>
-      <div className="song-actions">
+      <div className="flex items-center gap-1">
         {roomData?.mode !== 'music' && (
           <>
             <Button
               type="text"
               icon={<PlusOutlined />}
               onClick={() => handleAddSong(song)}
-              title="Thêm vào danh sách"
+              title="Add to queue"
+              aria-label="Add to queue"
               className="icon-only"
+              style={{ color: '#9710F6' }}
             />
             <Button
               type="text"
               icon={<StarFilled />}
               onClick={() => handleSetPriority(song)}
-              title="Ưu tiên"
-              className={`icon-only ${song.isPriority ? 'priority' : ''}`}
+              title="Prioritize"
+              aria-label="Prioritize"
+              className={`icon-only ${song.isPriority ? 'text-yellow-400' : ''}`}
+              style={{ color: song.isPriority ? '#9710F6' : '#9710F680' }}
             />
           </>
         )}
       </div>
     </div>
-  ), [handleAddSong, handleSetPriority, roomData?.mode]);
+  );
 
-  const PlaylistItem = useCallback(({ playlist }: { playlist: YouTubePlaylist }) => (
+  const SongListItem = useMemo(() => React.memo(SongListItemComponent), [handleAddSong, handleSetPriority, roomData?.mode]);
+
+  const PlaylistItemComponent = ({ playlist }: { playlist: YouTubePlaylist }) => (
     <Card
       hoverable
       className="mb-3"
@@ -574,47 +559,44 @@ const RemoteView = () => {
         <Button type="text" icon={<ImportOutlined />} />
       </div>
     </Card>
-  ), [importPlaylist, roomData?.currentPlaylistId]);
+  );
+
+  const PlaylistItem = useMemo(() => React.memo(PlaylistItemComponent), [importPlaylist, roomData?.currentPlaylistId]);
 
   const tabItems = useMemo(() => {
     const items = [];
 
-    if (roomData?.mode === 'karaoke') {
-      items.push({ 
-        key: 'search', 
+    // Tab tìm kiếm cho cả chế độ karaoke và music
+    if (roomData?.mode === 'karaoke' || roomData?.mode === 'music') {
+      items.push({
+        key: 'search',
         label: (
           <Badge count={searchResults.length} overflowCount={99}>
             <SearchOutlined /> Tìm kiếm
           </Badge>
-        ), 
+        ),
         children: (
-          <Spin spinning={searchLoading} tip="Đang tìm...">
-            {searchError && <Alert message={searchError} type="error" showIcon />}
-            <div className="space-y-2 max-h-[calc(100vh-220px)] pr-2 tabs-content-scrollable">
-              {searchResults.map(song => (
-                <SongListItem key={song.id} song={song} />
-              ))}
-            </div>
-            {nextPageToken && (
-              <Button 
-                onClick={handleLoadMore} 
-                loading={searchLoading} 
-                className="mt-4 w-full"
-              >
-                Tải thêm
-              </Button>
-            )}
-          </Spin>
+          <SearchTab
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            searchError={searchError}
+            nextPageToken={nextPageToken}
+            loadMore={loadMore}
+            SongListItem={SongListItem}
+          />
         )
       });
-    } else if (roomData?.mode === 'music') {
-      items.push({ 
-        key: 'youtube-playlists', 
+    }
+
+    // Tab playlist YouTube cho chế độ music
+    if (roomData?.mode === 'music') {
+      items.push({
+        key: 'youtube-playlists',
         label: (
           <Badge count={userPlaylists.length}>
             <YoutubeOutlined /> Playlist
           </Badge>
-        ), 
+        ),
         children: (
           <div className="max-h-[calc(100vh-220px)] pr-2 tabs-content-scrollable">
             <div className="mb-4">
@@ -668,28 +650,23 @@ const RemoteView = () => {
       });
     }
 
-    items.push({ 
-      key: 'playlist', 
+    // Luôn có tab danh sách phát bất kể chế độ nào
+    items.push({
+      key: 'playlist',
       label: (
         <Badge count={roomData?.queue?.length || 0}>
           <UnorderedListOutlined /> Danh sách phát
         </Badge>
-      ), 
+      ),
       children: (
-        <div style={{ height: 'calc(100vh - 280px)' }}>
+        <div className="max-h-[calc(100vh-280px)]">
           {roomData && (
-            <Playlist 
-              songs={roomData.queue || []} 
+            <Playlist
+              songs={roomData.queue || []}
               currentSong={roomData.queue?.[roomData.currentIndex]}
               onRemoveSong={handleRemoveSong}
               onSetPriority={handleSetPriority}
               mode={roomData.mode}
-              currentPlaylistId={roomData.currentPlaylistId}
-              onClearPlaylist={async () => {
-                if (!roomId) return;
-                await set(ref(database as DatabaseReference, `rooms/${roomId}/queue`), []);
-                await set(ref(database as DatabaseReference, `rooms/${roomId}/currentPlaylistId`), null);
-              }}
             />
           )}
         </div>
@@ -698,187 +675,125 @@ const RemoteView = () => {
 
     return items;
   }, [
-    roomData, 
-    searchResults, 
-    searchLoading, 
-    searchError, 
-    nextPageToken, 
-    userPlaylists,
+    roomData?.mode,
+    roomData?.queue?.length,
+    roomData?.currentIndex,
+    roomData?.currentPlaylistId,
+    searchResults.length,
+    searchLoading,
+    searchError,
+    nextPageToken,
+    userPlaylists.length,
     isAuthenticated,
     userInfo,
     authLoading,
     loadingPlaylists,
-    handleLoadMore, 
-    SongListItem, 
+    loadMore,
+    SongListItem,
     PlaylistItem,
-    handleRemoveSong, 
+    handleRemoveSong,
     handleSetPriority,
     login,
     logout
   ]);
-  
+
+  const getBackgroundClass = (bgValue: string): string => {
+    const bgClassMap: Record<string, string> = {
+      'bg-1': 'custom-bg-#f8cdcd',  // light pink
+      'bg-2': 'custom-bg-#9617f7',  // purple
+      'bg-3': 'custom-bg-#fcaff5',  // light pinkish
+      'bg-4': 'custom-bg-#49f803',  // green
+    };
+    return bgClassMap[bgValue] || 'bg-gray-50'; // default fallback
+  };
+
+  const handleThemeChange = useCallback((newTheme: string, newBackground?: string) => {
+    if (newBackground) {
+      localStorage.setItem('app-background', newBackground);
+      setBackground(getBackgroundClass(newBackground));
+    }
+  }, [getBackgroundClass]);
+
+  const handleResetApiUsage = useCallback(() => {
+    localStorage.removeItem('ytApiUsage');
+    localStorage.removeItem('lastApiReset');
+    // Xóa tất cả các cache tìm kiếm
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('yt_search_cache_')) {
+        localStorage.removeItem(key);
+      }
+    });
+    window.location.reload(); // Reload để cập nhật lại trạng thái
+  }, []);
+
   const backgroundOptions: BackgroundOption[] = useMemo(() => [
-    { label: 'Tối', value: 'bg-gray-900', theme: 'dark' },
-    { label: 'Xám', value: 'bg-zinc-800', theme: 'dark' },
-    { label: 'Xanh đậm', value: 'bg-slate-900', theme: 'dark' },
-    { label: 'Hồng', value: 'bg-pink-100', theme: 'light' },
-    { label: 'Trắng', value: 'bg-gray-100', theme: 'light' },
+    { label: 'bg1', value: 'bg-1', theme: 'dark' },
+    { label: 'bg2', value: 'bg-2', theme: 'dark' },
+    { label: 'bg3', value: 'bg-3', theme: 'light' },
+    { label: 'bg4', value: 'bg-4', theme: 'light' },
   ], []);
+
+  // State to manage guide visibility
+  const [showGuide, setShowGuide] = useState(false);
+
+  // Listen for changes to app-background in localStorage from other tabs/windows
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'app-background' && e.newValue) {
+        setBackground(getBackgroundClass(e.newValue));
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [getBackgroundClass]);
+
+  // Animation effect for buttons
+  useEffect(() => {
+    const styleId = 'remote-view-animations';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.innerHTML = animationStyles;
+      document.head.appendChild(style);
+    }
+
+    // Clean up
+    return () => {
+      const style = document.getElementById(styleId);
+      if (style) {
+        document.head.removeChild(style);
+      }
+    };
+  }, []);
 
   const currentSong = roomData?.queue?.[roomData?.currentIndex ?? -1];
 
-  // ... phần còn lại của component giữ nguyên ...
-  // (Now Playing Section, Settings Modal)
-  
   return (
-    <div className={`min-h-screen ${background} text-white p-4 relative`}>
-      <Button
-        type="text"
-        icon={<MoreOutlined />}
-        className="absolute top-0 right-2 z-20"
-        onClick={() => setShowSettings(true)}
-      />
+    <div
+      className={`remote-view-container text-gray-800 p-2 ${background.startsWith('custom-bg-') ? 'custom-background' : background}`}
+      style={background.startsWith('custom-bg-') ? { backgroundColor: background.replace('custom-bg-', '') } : {}}
+    >
+      <RemoteHeader setShowSettings={setShowSettings} />
       
       {/* Now Playing Section */}
-      <div className="now-playing-section p-4 bg-gradient-to-r from-purple-600 to-blue-500 rounded-lg mb-1 pt-6">
-        {currentSong ? (
-          <>
-            <p className={`text-sm flex items-center gap-1 font-medium ${
-              roomData?.playing ? 'text-green-400' : 'text-gray-400'
-            }`}>
-              {roomData?.playing ? 'online' : 'offline'}
-              {roomData?.playing ? (
-                <PlayCircleFilled className="text-green-500 animate-pulse" />
-              ) : (
-                <PauseCircleFilled className="text-gray-500" />
-              )}
-            </p>
-            <p className="font-bold text-lg leading-tight line-clamp-2">
-              {currentSong.title}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-gray-400 flex items-center gap-1 font-medium">
-              Chưa có bài hát <AudioOutlined className="text-gray-500" />
-            </p>
-            <p className="font-bold text-lg leading-tight line-clamp-2 text-gray-500">
-              Thêm bài hát đầu tiên để bắt đầu
-            </p>
-          </>
-        )}
-        
-        <div className="flex justify-center items-center gap-4 mt-2">
-          <Button
-            type="text"
-            shape="circle"
-            icon={<StepBackwardFilled />}
-            onClick={() => handlePlayerControl('prev')}
-            disabled={!roomData?.queue?.length}
-            style={{
-              width: '56px',
-              height: '56px',
-              fontSize: '22px',
-              color: roomData?.queue?.length ? '#22c55e' : '#9ca3af',
-            }}
-          />
-          <Button
-            type="text"
-            shape="circle"
-            onClick={() => handlePlayerControl('toggle')}
-            disabled={!roomData?.queue?.length}
-            style={{
-              width: '72px',
-              height: '72px',
-              borderRadius: '50%',
-              color: roomData?.playing ? '#22c55e' : '#9ca3af',
-            }}
-            icon={
-              roomData?.playing ? (
-                <PauseCircleFilled
-                  style={{ fontSize: '40px', transition: 'all 0.25s ease' }}
-                  className="pulse-glow"
-                />
-              ) : (
-                <PlayCircleFilled
-                  style={{ fontSize: '40px', transition: 'all 0.25s ease' }}
-                />
-              )
-            }
-          />
-          <Button
-            type="text"
-            shape="circle"
-            icon={<StepForwardFilled />}
-            onClick={() => handlePlayerControl('next')}
-            disabled={!roomData?.queue?.length}
-            style={{
-              width: '56px',
-              height: '56px',
-              fontSize: '22px',
-              color: roomData?.queue?.length ? '#22c55e' : '#9ca3af',
-            }}
-          />
-        </div>
-      </div>
+      <NowPlayingSection
+        currentSong={currentSong}
+        roomData={roomData}
+        handlePlayerControl={handlePlayerControl}
+      />
 
-      {/* Search Input - chỉ hiển thị trong karaoke mode */}
-      {roomData?.mode === 'karaoke' && (
-        <div className="sticky top-0 py-0 z-10">
-          <Input
-            placeholder="Nhập tên bài hát..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onPressEnter={handleManualSearch}
-            suffix={
-              <>
-                <Button 
-                  type="text" 
-                  icon={<AudioOutlined />} 
-                  danger={isRecording} 
-                  onClick={handleVoiceSearch} 
-                />
-                <Button 
-                  type="text" 
-                  icon={<SearchOutlined />} 
-                  onClick={handleManualSearch} 
-                />
-              </>
-            }
-          />
-        </div>
-      )}
-
-      {/* Music Mode Search Input - hiển thị riêng cho music mode */}
-      {roomData?.mode === 'music' && (
-        <div className="sticky top-0 py-0 z-10 mb-3">
-          <Input
-            placeholder="Tìm kiếm playlist YouTube..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onPressEnter={handleManualSearch}
-            suffix={
-              <>
-                <Button 
-                  type="text" 
-                  icon={<AudioOutlined />} 
-                  danger={isRecording} 
-                  onClick={handleVoiceSearch} 
-                />
-                <Button 
-                  type="text" 
-                  icon={<SearchOutlined />} 
-                  onClick={handleManualSearch} 
-                />
-              </>
-            }
-          />
-          <div className="mt-2 flex items-center text-sm text-gray-400">
-            <YoutubeOutlined className="mr-1" />
-            <span>Tìm kiếm playlist từ YouTube của bạn hoặc từ kho dữ liệu công khai</span>
-          </div>
-        </div>
-      )}
+      <SearchSection
+        roomData={roomData}
+        query={query}
+        handleQueryChange={handleQueryChange}
+        handleManualSearch={handleManualSearch}
+        isRecording={isRecording}
+        handleVoiceSearch={handleVoiceSearch}
+      />
 
       {/* Tabs */}
       <Tabs
@@ -886,134 +801,33 @@ const RemoteView = () => {
         onChange={setActiveTab}
         items={tabItems}
         centered
-        className="mt-2"
+        className="flex-grow flex flex-col"
+        tabBarStyle={{ flexShrink: 0 }}
       />
-
+      
       {/* Settings Modal */}
-      <Modal 
-        title="Cài đặt" 
-        open={showSettings} 
-        onCancel={() => setShowSettings(false)} 
-        footer={null}
-      >
-        <div className="space-y-4">
-          <p>
-            <InfoCircleOutlined /> Trạng thái:{' '}
-            <Badge 
-              status={roomData ? "success" : "default"} 
-              text={roomData ? "Đã kết nối" : "Chưa kết nối"} 
-            />
-          </p>
-          <p>
-            <UnorderedListOutlined /> Số bài trong hàng đợi:{' '}
-            {roomData?.queue?.length || 0}
-          </p>
-          <p>
-            <WifiOutlined /> Mã phòng:{' '}
-            <Tag color="blue">{roomId}</Tag>
-          </p>
-          <p>
-            <ClockCircleFilled /> API Usage:{' '}
-            <Tag color={apiUsage > 9000 ? "red" : "green"}>
-              {apiUsage} / 10000
-            </Tag>
-          </p>
-          
-          <Button 
-            type="text" 
-            icon={<CopyOutlined />} 
-            onClick={() => navigator.clipboard.writeText(window.location.href)}
-            className="w-full"
-          >
-            Sao chép URL điều khiển
-          </Button>
-
-          <Divider />
-          
-          <p className="font-semibold mb-2">
-            🎵 Chế độ phát
-          </p>
-          
-          <Row gutter={12}>
-            <Col span={12}>
-              <Button
-                block
-                type={roomData?.mode !== 'music' ? 'primary' : 'default'}
-                onClick={() => {
-                  if (!roomId) return;
-                  set(ref(database as DatabaseReference, `rooms/${roomId}/mode`), 'karaoke');
-                }}
-              >
-                🎤 Karaoke
-              </Button>
-            </Col>
-            <Col span={12}>
-              <Button
-                block
-                type={roomData?.mode === 'music' ? 'primary' : 'default'}
-                onClick={() => {
-                  if (!roomId) return;
-                  set(ref(database as DatabaseReference, `rooms/${roomId}/mode`), 'music');
-                }}
-              >
-                🎧 Nghe nhạc
-              </Button>
-            </Col>
-          </Row>
-          
-          <Divider />
-          
-          <p className="font-semibold mb-2">
-            <SettingOutlined /> Giao diện
-          </p>
-          
-          <Row gutter={12}>
-            <Col span={12}>
-              <Button
-                block
-                type={theme === 'dark' ? 'primary' : 'default'}
-                onClick={() => handleThemeChange('dark')}
-              >
-                🌙 Tối
-              </Button>
-            </Col>
-            <Col span={12}>
-              <Button
-                block
-                type={theme === 'light' ? 'primary' : 'default'}
-                onClick={() => handleThemeChange('light')}
-              >
-                ☀️ Sáng
-              </Button>
-            </Col>
-          </Row>
-
-          <Divider />
-          
-          <p className="font-semibold mb-2">🎨 Màu nền</p>
-          
-          <Row gutter={8}>
-            {backgroundOptions.map(bg => (
-              <Col span={12} key={bg.value} className="mb-2">
-                <Button
-                  block
-                  type={background === bg.value ? 'primary' : 'default'}
-                  onClick={() => handleThemeChange(bg.theme, bg.value)}
-                >
-                  {bg.label}
-                </Button>
-              </Col>
-            ))}
-          </Row>
-        </div>
-      </Modal>
+      <SettingsModal
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        backgroundOptions={backgroundOptions}
+        background={background}
+        handleThemeChange={handleThemeChange}
+        roomData={roomData}
+        roomId={roomId}
+        apiUsage={apiUsage}
+        handleResetApiUsage={handleResetApiUsage}
+        setActiveTab={setActiveTab}
+        search={search}
+        query={query}
+      />
 
       {/* YouTube Playlist Manager Modal */}
       <Modal
-        title="Quản lý Playlist YouTube"
+        title="YouTube Playlist Manager"
         open={showYouTubePlaylistManager}
         onCancel={() => setShowYouTubePlaylistManager(false)}
-        width={800}
+        width="90%"
+        style={{ maxWidth: 800 }}
         footer={null}
       >
         <YouTubePlaylistManager

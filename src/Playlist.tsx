@@ -1,5 +1,6 @@
-import React from 'react';
-import { Button } from 'antd';
+import React, { useEffect, useRef } from 'react';
+import { Button, Empty } from 'antd';
+import { StarFilled, DeleteOutlined } from '@ant-design/icons';
 import { ExtendedSong } from './types';
 
 interface PlaylistProps {
@@ -8,6 +9,7 @@ interface PlaylistProps {
   onSelectSong?: (song: ExtendedSong) => void;
   onRemoveSong?: (songId: string) => void;
   onSetPriority?: (song: ExtendedSong) => void;
+  mode?: 'karaoke' | 'music';
 }
 
 const Playlist: React.FC<PlaylistProps> = ({
@@ -16,51 +18,54 @@ const Playlist: React.FC<PlaylistProps> = ({
   onSelectSong,
   onRemoveSong,
   onSetPriority,
+  mode,
 }) => {
-  const isCurrent = (song: ExtendedSong) => song.id === currentSong?.id;
+  const currentSongRef = useRef<HTMLDivElement>(null);
 
-  // Icons from the original component
-  const StarIcon = ({ isActive = false }: { isActive?: boolean }) => (
-    <svg
-      className={`w-4 h-4 transition-colors ${isActive ? 'text-yellow-400' : 'text-white'}`}
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </svg>
-  );
-
-  const TrashIcon = () => (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-    </svg>
-  );
+  useEffect(() => {
+    // Scroll to the current song when it changes
+    if (currentSongRef.current) {
+      // Using a setTimeout to ensure DOM is updated before scrolling
+      setTimeout(() => {
+        currentSongRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }, 100);
+    }
+  }, [currentSong]);
 
   if (songs.length === 0) {
     return (
-      <div className="py-8 text-center text-gray-400 text-sm">
-        Danh sách phát đang trống.<br />
-        Thêm bài hát từ ô tìm kiếm nhé!
+      <div className="flex items-center justify-center h-full">
+        <Empty
+          description={
+            <span className="text-gray-400">
+              Danh sách phát trống.
+              <br />
+              Thêm bài hát từ tab tìm kiếm!
+            </span>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div
-      className="space-y-1"
-      style={{ height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
-    >
+    <div className="space-y-2 p-1 h-full overflow-y-auto">
       {songs.map((song) => {
-        const isPlaying = isCurrent(song);
+        const isPlaying = song.id === currentSong?.id;
         return (
           <div
             key={song.id}
-            className={`playlist-item cursor-pointer ${isPlaying ? 'bg-[rgba(59,130,246,0.2)]' : ''}`}
+            ref={isPlaying ? currentSongRef : null}
+            className={`group flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-all duration-200
+              ${isPlaying ? 'bg-blue-500/30' : 'bg-white hover:bg-gray-100'}`}
             onClick={() => onSelectSong?.(song)}
           >
             <img
               src={song.thumbnail}
-              className="playlist-thumb"
+              className="w-16 h-12 object-cover rounded-md flex-shrink-0 ml-[0.5px] mt-[0.5px]"
               alt={song.title}
               loading="lazy"
               onError={(e) => {
@@ -69,38 +74,40 @@ const Playlist: React.FC<PlaylistProps> = ({
             />
 
             <div className="flex-1 min-w-0">
-              <p className={`playlist-title ${song.isPriority ? 'text-yellow-300' : 'text-white'}`}>
+              <p className={`font-semibold break-words ${song.isPriority ? 'text-yellow-600' : 'text-gray-800'}`}>
                 {song.title}
               </p>
-              <p className="text-xs text-gray-400">YouTube</p>
+              <p className="text-xs text-gray-400 truncate">{song.channelTitle || 'YouTube'}</p>
             </div>
 
-            <div className="playlist-actions">
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               {onSetPriority && (
                 <Button
                   type="text"
-                  icon={<StarIcon isActive={song.isPriority} />}
+                  icon={<StarFilled />}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSetPriority(song);
                   }}
-                  title={song.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên'}
-                  className="icon-only"
-                  style={{ color: song.isPriority ? '#fbbf24' : 'white' }}
+                  title={song.isPriority ? 'Remove priority' : 'Prioritize'}
+                  aria-label={song.isPriority ? 'Remove priority' : 'Prioritize'}
+                  className={`icon-only ${song.isPriority ? 'text-yellow-400' : 'text-gray-400 hover:text-white'}`}
+                  style={{ color: song.isPriority ? '#9710F6' : '#9710F680' }}
                 />
               )}
 
               {onRemoveSong && (
                 <Button
                   type="text"
-                  icon={<TrashIcon />}
+                  danger
+                  icon={<DeleteOutlined />}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemoveSong(song.id);
                   }}
-                  title="Xóa khỏi danh sách"
-                  aria-label="Xóa bài hát"
-                  className="icon-only"
+                  title="Remove from playlist"
+                  aria-label="Remove from playlist"
+                  className="icon-only text-gray-400 hover:text-red-500"
                 />
               )}
             </div>

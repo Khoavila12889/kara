@@ -47,7 +47,14 @@ function App() {
               </ErrorBoundary>
             }
           />
-          <Route path="/remote" element={<RemoteView />} />
+          <Route
+            path="/remote"
+            element={
+              <ErrorBoundary>
+                <RemoteView />
+              </ErrorBoundary>
+            }
+          />
           <Route path="/youtube-auth" element={<YouTubeAuthCallback />} />
         </Routes>
       </Router>

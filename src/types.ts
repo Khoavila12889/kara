@@ -1,19 +1,19 @@
-export type RoomMode = 'karaoke' | 'music';
-
-export interface Song {
-  id: string;
-  title: string;
-  thumbnail: string;
+export interface RoomData {
+  queue: ExtendedSong[];
+  currentIndex: number;
+  playing: boolean;
+  mode?: RoomMode;
+  musicSource?: {
+    type: 'playlist' | 'channel';
+    id: string;
+  };
+  currentPlaylistId?: string;
 }
 
-export interface ExtendedSong extends Song {
-  addedBy?: string; // ID của thiết bị đã thêm bài hát
-  addedAt?: number; // Thời gian thêm bài hát
-  isPriority?: boolean; // Đánh dấu bài hát có ưu tiên hay không
-  duration?: string; // ISO 8601 duration (e.g., "PT4M33S")
-  viewCount?: string; // Total view count
-  type?: 'youtube' | 'local';
-  channelTitle?: string;
+export interface BackgroundOption {
+  label: string;
+  value: string;
+  theme: 'dark' | 'light';
 }
 
 export interface YouTubePlaylist {
@@ -23,3 +23,18 @@ export interface YouTubePlaylist {
   thumbnail: string;
   itemCount: number;
 }
+
+export interface Song {
+  id: string;
+  title: string;
+  channelTitle?: string;
+  thumbnail?: string;
+  duration?: string;
+}
+
+export interface ExtendedSong extends Song {
+  isPriority?: boolean;
+  type?: 'youtube' | 'other';
+}
+
+export type RoomMode = 'karaoke' | 'music';

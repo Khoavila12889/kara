@@ -8,14 +8,15 @@ interface SearchProps {
 }
 
 const Search: React.FC<SearchProps> = ({ onAddSong, onAddPriority }) => {
-  const { 
-    query, 
-    setQuery, 
-    results, 
-    loading, 
-    error, 
-    nextPageToken, 
+  const {
+    query,
+    setQuery,
+    results,
+    loading,
+    error,
+    nextPageToken,
     search,
+    loadMore,
     lastKeyword,
   } = useSearch();
 
@@ -33,7 +34,7 @@ const Search: React.FC<SearchProps> = ({ onAddSong, onAddPriority }) => {
 
   const handleLoadMore = () => {
     if (loading || !nextPageToken) return;
-    search(lastKeyword, nextPageToken);
+    loadMore();
   };
 
   const handleClear = () => {

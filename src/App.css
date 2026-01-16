@@ -7,11 +7,9 @@
 }
 
 body {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  color: #f1f1f1;
   min-height: 100vh;
   line-height: 1.6;
-  overflow: hidden; /* Ngăn thanh cuộn toàn trang */
+  /* Removed overflow: hidden to prevent content from being hidden */
 }
 
 .container {
@@ -62,7 +60,9 @@ body {
 /* Fixed now playing section */
 .now-playing-fixed {
   flex-shrink: 0;
-  z-index: 30;
+  z-index: 20; /* Lower the z-index to prevent overlapping issues */
+  position: sticky;
+  top: 0;
 }
 
 /* Scrollable content area */
@@ -541,13 +541,11 @@ body {
 }
 
 /* Prevent horizontal overflow */
-html, body {
+html {
   overflow-x: hidden;
   max-width: 100%;
   /* Fix for mobile scrolling issues */
   -webkit-overflow-scrolling: touch;
-  height: 100vh;
-  overflow: hidden;
 }
 
 /* Better touch targets on mobile */
@@ -623,12 +621,11 @@ button,
   gap: 10px;
   padding: 10px;
   border-radius: 10px;
-  background: linear-gradient(to right, #6a11cb, #2575fc); /* Purple-blue gradient */
   transition: background 0.2s ease;
 }
 
 .song-item:hover {
-  background: linear-gradient(to right, #8c42ed, #4a91f5); /* Lighter purple-blue gradient on hover */
+  background: none; /* Will be handled by Tailwind classes on the component */
 }
 
 .song-thumb {
@@ -720,3 +717,101 @@ button,
   gap: 4px;
   margin-left: auto;
 }
+
+
+
+/* Now Playing Section */
+.now-playing-section {
+  z-index: 20;
+}
+
+/* Marquee animation for scrolling text */
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 15s linear infinite;
+  padding-left: 100%;
+}
+
+.pause-marquee {
+  animation-play-state: paused;
+}
+
+/* Custom background class for dynamic colors */
+.custom-background {
+  transition: background-color 0.3s ease;
+}
+
+/* Remote View Search Input */
+.search-input .ant-input {
+  @apply bg-white border-gray-300 text-gray-900 placeholder-gray-500;
+}
+.search-input .ant-input:focus,
+.search-input .ant-input:hover {
+  @apply bg-white border-blue-500;
+}
+.search-input .ant-input-prefix .anticon {
+  @apply text-gray-500;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Antd Tabs dark theme override */
+.ant-tabs-nav {
+  @apply border-b border-gray-700;
+}
+
+.ant-tabs-tab {
+  @apply text-gray-400;
+}
+
+.ant-tabs-tab:hover {
+  @apply text-white;
+}
+
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  @apply text-blue-500;
+}
+
+.ant-tabs-ink-bar {
+  @apply bg-blue-500;
+}
+
+/* Settings Modal */
+.settings-modal .ant-modal-content {
+  @apply bg-gray-100 dark:bg-gray-800;
+}
+
+.settings-modal .ant-modal-header {
+  @apply bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700;
+}
+
+.settings-modal .ant-modal-title {
+  @apply text-gray-800 dark:text-white;
+}
+
+.settings-modal .ant-modal-close-x {
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+.settings-content {
+  @apply space-y-6;
+}
+

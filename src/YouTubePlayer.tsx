@@ -9,25 +9,21 @@ interface YouTubePlayerProps {
   playRequestTimestamp?: number;
   onEnded: () => void;
   onError: (error: any) => void;
+  onStreamAvailable?: (stream: MediaStream) => void;
   className?: string;
 }
 
-const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, className, playRequestTimestamp }) => {
+const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, className, onStreamAvailable }) => {
   const playerRef = useRef<ReactPlayer>(null);
   const [isReady, setIsReady] = useState(false);
   const prevPlayingRef = useRef(playing);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    // This effect manually controls playback to bypass browser autoplay policies
-    // Check if playing state changed from false to true (a play request)
     const wasPlaying = prevPlayingRef.current;
     prevPlayingRef.current = playing;
 
     if (!isReady || !playerRef.current) {
-      // If not ready but playing is true, we'll play when ready
-      if (playing && !isReady) {
-        // We'll handle this in handleReady
-      }
       return;
     }
 
@@ -47,13 +43,11 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
         logger.log('Pausing video via manual control');
       }
     }
-  }, [playing, isReady, song]); // Depend on song object now
+  }, [playing, isReady, song]);
 
   const handleReady = () => {
     setIsReady(true);
     logger.log('Player is ready!');
-
-    // If playing was requested while loading, play now
     if (playing) {
       const internalPlayer = playerRef.current?.getInternalPlayer();
       if (internalPlayer && typeof internalPlayer.playVideo === 'function') {
@@ -61,11 +55,32 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
         logger.log('Playing video after ready');
       }
     }
+
+    // Get the audio stream
+    if (playerRef.current && onStreamAvailable) {
+      const internalPlayer = playerRef.current.getInternalPlayer();
+      if (internalPlayer && typeof internalPlayer.getMediaElement === 'function') {
+        const videoElement = internalPlayer.getMediaElement();
+        if (videoElement && typeof videoElement.captureStream !== 'function') {
+          // @ts-ignore
+          videoElement.captureStream = videoElement.captureStream || videoElement.mozCaptureStream;
+        }
+
+        if (videoElement && typeof videoElement.captureStream === 'function') {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+          }
+          streamRef.current = videoElement.captureStream();
+          if (streamRef.current) {
+            onStreamAvailable(streamRef.current);
+          }
+        }
+      }
+    }
   };
 
   const handleError = (error: any) => {
     logger.error("YouTube Player Error:", error);
-    // Call the parent's error handler, which should trigger the next song
     onError(error);
   };
 
@@ -82,7 +97,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
       <ReactPlayer
         ref={playerRef}
         url={`https://www.youtube.com/watch?v=${song.id}`}
-        playing={playing} // Still pass playing prop, it's good for initial state
+        playing={playing}
         controls={false}
         width="100%"
         height="100%"
@@ -97,10 +112,11 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
               showinfo: 0
             }
           }
-        }}
+        } as any}
       />
     </div>
   );
 };
 
 export default YouTubePlayer;
+
