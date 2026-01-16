@@ -237,7 +237,7 @@ Trong file `TvView.tsx`, có một hàm `handleSetPriorityDevice` đã bị vô 
     *   Điều này ngăn chặn tình trạng "race condition" (kết quả cũ trả về sau kết quả mới) và đảm bảo giao diện luôn hiển thị kết quả cho từ khóa mới nhất.
 
 3.  **Cache kết quả tìm kiếm (LRU Cache)**:
-    *   Ứng dụng sử dụng một bộ nhớ đệm trong bộ nhớ (in-memory) theo cơ chế LRU (Least Recently Used) để lưu kết quả của **5** từ khóa tìm kiếm cuối cùng.
+    *   Ứng dụng sử dụng một bộ nhớ đệm trong bộ nhớ (in-memory) theo cơ chế LRU (Least Recently Used) để lưu kết quả của **30** từ khóa tìm kiếm cuối cùng.
     *   Nếu người dùng tìm lại một từ khóa gần đây, kết quả sẽ được tải ngay lập tức từ cache mà không cần gọi API.
     *   Khi cache đầy, từ khóa cũ nhất sẽ bị xóa để nhường chỗ cho từ khóa mới.
 
@@ -249,6 +249,28 @@ Trong file `TvView.tsx`, có một hàm `handleSetPriorityDevice` đã bị vô 
     *   Lượng API đã sử dụng được theo dõi và lưu vào `localStorage`.
     *   Ứng dụng sẽ tự động đặt lại bộ đếm này về 0 mỗi ngày mới, giúp việc theo dõi quota trong ngày chính xác hơn.
     *   Một cảnh báo sẽ được hiển thị nếu quota sắp hết.
+
+6.  **Tối ưu hóa số lượng kết quả tìm kiếm**:
+    *   Tăng `SEARCH_LIMIT` từ 4 lên 8 kết quả mỗi lần tìm kiếm để giảm số lần gọi API tổng thể.
+    *   Tăng thời gian cache từ 20 phút lên 1 giờ để giữ kết quả lâu hơn.
+
+7.  **Lazy Loading Video Details**:
+    *   Thay vì tải chi tiết video (duration, viewCount) ngay sau khi tìm kiếm, hệ thống chỉ tải khi người dùng thực sự cần.
+    *   Điều này giúp tiết kiệm ~50% API units do không gọi API chi tiết video cho tất cả kết quả.
+
+8.  **Giới hạn số trang tìm kiếm**:
+    *   Giới hạn tối đa 3 trang tìm kiếm để tránh lãng phí quota cho các kết quả ít liên quan ở các trang sâu.
+    *   Khi đạt đến giới hạn, người dùng sẽ nhận được thông báo rõ ràng.
+
+9.  **Tối ưu hóa từ khóa tìm kiếm**:
+    *   Thêm điều kiện độ dài từ khóa tối thiểu (ít nhất 2 ký tự) để tránh gọi API với các từ khóa quá ngắn.
+    *   Loại bỏ từ 'karaoke' khỏi cache key để tránh trùng lặp cache không cần thiết (vd: "hello" và "hello karaoke" sẽ dùng chung cache).
+
+10. **Cải tiến hiệu suất tổng thể**:
+    *   Thêm cơ chế queue request với độ ưu tiên để tránh race condition.
+    *   Cải thiện cơ chế throttle thông minh dựa trên mức sử dụng API hiện tại.
+    *   Tăng thời gian debounce và throttle để giảm số lần gọi API không cần thiết.
+    *   Loại bỏ background fetch không cần thiết để tối ưu hóa việc sử dụng API.
 
 ## Các Chức Năng Có Thể Phát Triển (Còn Thiếu)
 
@@ -280,3 +302,99 @@ Dưới đây là một số ý tưởng và chức năng có thể được ph�
     *   Hỗ trợ refresh token để tự động làm mới access token khi hết hạn.
     *   Cơ chế đăng xuất toàn cục.
     *   Quản lý nhiều tài khoản YouTube.
+
+*   **Hiệu ứng âm thanh trực quan (Music Visualizer)**:
+    *   Component `MusicVisualizer` mới với hiệu ứng tần số mô phỏng
+    *   Hiển thị dạng thanh tần số (frequency bars) với độ cao thay đổi theo nhịp điệu
+    *   Tùy chỉnh màu sắc gradient, độ mờ, kích thước
+    *   Tích hợp dễ dàng vào giao diện người dùng
+
+## Cải Tiến Hiệu Suất và Ổn Định
+
+Dưới đây là các cải tiến hiệu suất và ổn định đã được thực hiện:
+
+*   **Sửa lỗi tìm kiếm trong chế độ karaoke**:
+    *   Sửa lỗi `forceSearch` không được truyền đúng trong hook `useSearch`
+    *   Đảm bảo tìm kiếm hoạt động chính xác trong chế độ karaoke
+    *   Thêm cơ chế `lastProcessedQueryRef` để phân biệt giữa tìm kiếm tự động và thủ công
+
+*   **Tối ưu hóa sử dụng API**:
+    *   Tăng `SEARCH_LIMIT` từ 4 lên 8 kết quả mỗi lần tìm kiếm
+    *   Tăng `CACHE_TTL` từ 20 phút lên 1 giờ
+    *   Thêm cơ chế cache chi tiết video toàn cục
+    *   Áp dụng lazy loading video details (chỉ tải khi cần)
+    *   Giới hạn số trang tìm kiếm tối đa (3 trang)
+    *   Thêm điều kiện độ dài từ khóa tối thiểu (2 ký tự)
+    *   Loại bỏ từ 'karaoke' khỏi cache key để tránh trùng lặp
+
+*   **Cải thiện hiệu suất tổng thể**:
+    *   Thêm cơ chế queue request với độ ưu tiên
+    *   Cải thiện cơ chế throttle thông minh dựa trên mức sử dụng API
+    *   Tăng thời gian debounce và throttle để giảm số lần gọi API
+    *   Loại bỏ background fetch không cần thiết
+
+*   **Sửa lỗi và cải thiện ổn định**:
+    *   Sửa lỗi `logger.debug is not a function`
+    *   Sửa lỗi thêm bài hát thất bại do trường `undefined`
+    *   Cải thiện cơ chế chuyển đổi tab khi thay đổi chế độ
+    *   Đảm bảo component re-render khi `roomData.mode` thay đổi
+
+## Cải Tiến Giao Diện Người Dùng (UI/UX)
+
+Dưới đây là các cải tiến giao diện người dùng đã được thực hiện:
+
+*   **Cập nhật icon cài đặt**:
+    *   Thay đổi từ icon `MoreOutlined` (3 chấm) sang `SettingOutlined` (bánh răng)
+    *   Icon bánh răng phù hợp hơn với chức năng cài đặt
+    *   Icon có màu trắng để dễ nhìn trên nền tối
+    *   Vị trí icon được đặt ở góc trên cùng bên phải để dễ truy cập
+
+*   **Điều chỉnh vị trí modal cài đặt**:
+    *   Modal cài đặt được đặt sát mép trên hơn (top: 10px)
+    *   Giảm khoảng trống không cần thiết giữa đỉnh màn hình và modal
+    *   Tận dụng không gian màn hình hiệu quả hơn
+
+*   **Cải thiện trải nghiệm người dùng**:
+    *   Giao diện trực quan hơn với icon phù hợp với chức năng
+    *   Tăng tính nhất quán trong thiết kế
+    *   Dễ sử dụng hơn trên các thiết bị khác nhau
+
+## Cập Nhật Mới Nhất (Latest Updates)
+
+Dưới đây là những cập nhật mới nhất đã được tích hợp vào ứng dụng:
+
+*   **Việt hóa giao diện người dùng**:
+    *   Toàn bộ giao diện người dùng đã được dịch sang tiếng Việt
+    *   Các nút bấm, nhãn, thông báo lỗi đều sử dụng ngôn ngữ tiếng Việt
+    *   Cải thiện trải nghiệm cho người dùng Việt Nam
+
+*   **Cải tiến modal cài đặt (SettingsModal)**:
+    *   Khi người dùng chọn chế độ (Karaoke hoặc Nghe nhạc), modal sẽ tự động đóng lại
+    *   Khi người dùng chọn màu nền, modal sẽ tự động đóng lại
+    *   Không cần phải nhấn nút "X" để đóng modal sau khi chọn tùy chọn
+
+*   **Cải tiến chế độ Nghe nhạc (Music Mode)**:
+    *   Xóa bỏ dòng hướng dẫn "Search your playlists or public ones from YouTube" khỏi thanh tìm kiếm
+    *   Cải thiện trải nghiệm tìm kiếm trong chế độ nghe nhạc
+
+*   **Cải tiến giao diện playlist**:
+    *   Xóa bỏ phần hiển thị "Danh sách phát hiện tại" và nút "Xóa" khỏi giao diện playlist
+    *   Giao diện gọn gàng, tập trung vào danh sách bài hát
+
+*   **Sửa lỗi chọn màu nền**:
+    *   Sửa lỗi không áp dụng màu nền lên giao diện sau khi chọn
+    *   Màu nền thay đổi ngay lập tức sau khi chọn mà không cần tải lại trang
+
+*   **Cập nhật tiêu đề trình duyệt**:
+    *   Tiêu đề trình duyệt đã được cập nhật từ "T-Karaoke" thành "T-Karaoke Music Player"
+    *   Hiển thị rõ ràng hơn mục đích của ứng dụng
+
+*   **Tối ưu hóa hiệu suất**:
+    *   Xóa các thành phần và props không sử dụng để giảm kích thước bundle
+    *   Cải thiện hiệu suất render và phản hồi của giao diện
+    *   Tối ưu hóa quản lý trạng thái (state management)
+
+*   **Cải thiện tính nhất quán**:
+    *   Đồng bộ hóa văn bản và nhãn giữa các thành phần
+    *   Cải thiện trải nghiệm người dùng trên cả hai chế độ Karaoke và Nghe nhạc
+    *   Đảm bảo các hành động giống nhau có phản hồi nhất quán
