@@ -8,6 +8,19 @@ export interface RoomData {
     id: string;
   };
   currentPlaylistId?: string;
+  youtubeAuth?: YouTubeAuthData;
+}
+
+export interface YouTubeAuthData {
+  access_token: string;
+  refresh_token?: string;
+  expires_at: number;
+  user_info: {
+    id: string;
+    name: string;
+    email: string;
+    picture?: string;
+  };
 }
 
 export interface BackgroundOption {

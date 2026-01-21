@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { logger } from './logger';
+import { database } from './firebase'; // Import Firebase
+import { ref, update } from 'firebase/database'; // Import Firebase functions
+import { YouTubeAuthData } from './types';
 
 const YouTubeAuthCallback = () => {
   const [status, setStatus] = useState('Đang xử lý đăng nhập...');
@@ -13,7 +16,8 @@ const YouTubeAuthCallback = () => {
       const error = params.get('error');
       const errorDescription = params.get('error_description');
 
-      const redirectUrl = sessionStorage.getItem('redirect_url_after_login') || '/';
+      // BUG FIX: Read from localStorage, not sessionStorage
+      const redirectUrl = localStorage.getItem('redirect_url_after_login') || '/';
 
       if (error) {
         const errorMessage = errorDescription ? `${error}: ${errorDescription}` : error;
@@ -30,9 +34,8 @@ const YouTubeAuthCallback = () => {
       }
 
       if (code) {
-        const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
+        const codeVerifier = localStorage.getItem('pkce_code_verifier');
         if (!codeVerifier) {
-            // This error is critical and shouldn't happen in a normal flow
             const errorMsg = 'Lỗi bảo mật: Không tìm thấy mã xác thực PKCE. Vui lòng thử lại.';
             setStatus(errorMsg);
             logger.error(errorMsg);
@@ -46,39 +49,23 @@ const YouTubeAuthCallback = () => {
         }
 
         try {
-          // The URL for your deployed standalone proxy server
-          // This should be added to your .env file
-          const proxyUrl = (import.meta as any).env.VITE_AUTH_PROXY_URL;
-          if (!proxyUrl) {
-            throw new Error("Cấu hình phía client bị thiếu: VITE_AUTH_PROXY_URL chưa được thiết lập.");
-          }
-
+          const proxyUrl = '/api/auth'; // Use a relative path for the proxy
           setStatus('Đang trao đổi mã xác thực lấy token...');
-
-          // Log the request for debugging
           logger.info('Sending request to proxy:', {
             proxyUrl,
-            code: code.substring(0, 10) + '...', // Only log first 10 chars for security
+            code: code.substring(0, 10) + '...',
             hasCodeVerifier: !!codeVerifier
           });
 
-          // Call the standalone proxy server
           const response = await fetch(proxyUrl, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-              code: code,
-              code_verifier: codeVerifier,
-            }),
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ code: code, code_verifier: codeVerifier }),
           });
 
           logger.info('Proxy response status:', response.status);
 
           if (!response.ok) {
-            // Try to get detailed error from proxy's JSON response
             let errorDetails = 'Không có thông tin chi tiết.';
             try {
               const errorData = await response.json();
@@ -99,43 +86,57 @@ const YouTubeAuthCallback = () => {
             throw new Error("Phản hồi từ proxy không hợp lệ, thiếu access_token hoặc user_info.");
           }
 
-          // Store data and notify parent/redirect
-          localStorage.setItem('youtube_access_token', access_token);
-          localStorage.setItem('youtube_user_info', JSON.stringify(user_info));
-          // Store additional token info if available
-          if (refresh_token) {
-            localStorage.setItem('youtube_refresh_token', refresh_token);
-          }
-          if (expires_in) {
-            localStorage.setItem('youtube_token_expires_at', (Date.now() + (expires_in * 1000)).toString());
-          }
-
-          setStatus('Đăng nhập thành công! Đang chuyển hướng...');
-
+          // This is the primary flow for popup-based login on desktop
           if (window.opener) {
+            setStatus('Đăng nhập thành công! Đang gửi thông tin về cửa sổ chính...');
             window.opener.postMessage({
                 type: 'youtube_auth_success',
-                access_token: access_token,
-                user_info: user_info,
-                refresh_token: refresh_token,
-                expires_in: expires_in
+                ...data
             }, window.location.origin);
             window.close();
+            return;
+          }
+
+          // --- QR Code / Mobile Flow ---
+          // The redirectUrl contains the original URL from the TV/Desktop device
+          // We need to parse it to get the roomId
+          const url = new URL(redirectUrl);
+          const roomId = url.searchParams.get('room');
+
+          if (roomId) {
+            setStatus('Đang cập nhật trạng thái đăng nhập cho thiết bị của bạn...');
+            
+            const expires_at = Date.now() + (expires_in * 1000);
+
+            const authPayload: YouTubeAuthData = {
+              access_token,
+              refresh_token,
+              expires_at,
+              user_info,
+            };
+
+            const roomRef = ref(database, `rooms/${roomId}`);
+            await update(roomRef, { youtubeAuth: authPayload });
+
+            setStatus('Xác thực thành công! Bạn có thể đóng cửa sổ này.');
+            // Try to close the window, may not work on all mobile browsers
+            setTimeout(() => window.close(), 1000);
           } else {
-            // Mobile redirect
-             window.location.href = redirectUrl;
+            // Fallback for non-popup, non-QR-code flow (e.g. direct mobile login for the remote itself)
+            // This flow is less common for this app's design
+             localStorage.setItem('youtube_access_token', access_token);
+             localStorage.setItem('youtube_user_info', JSON.stringify(user_info));
+             if (refresh_token) localStorage.setItem('youtube_refresh_token', refresh_token);
+             if (expires_in) localStorage.setItem('youtube_token_expires_at', (Date.now() + (expires_in * 1000)).toString());
+
+            setStatus('Đăng nhập thành công! Đang chuyển hướng...');
+            window.location.href = redirectUrl; // Redirect back to the remote page
           }
 
         } catch (err: any) {
           const errorMsg = `Xử lý callback thất bại: ${err.message}`;
           setStatus(errorMsg);
           logger.error('Callback Processing Error:', err);
-
-          // Log more details for debugging
-          logger.error('Full error object:', err);
-          if (err.stack) {
-            logger.error('Error stack:', err.stack);
-          }
 
           if (window.opener) {
                 window.opener.postMessage({ type: 'youtube_auth_error', error: err.message }, window.location.origin);
@@ -147,9 +148,9 @@ const YouTubeAuthCallback = () => {
                 }, 5000);
             }
         } finally {
-            // Clean up session storage
-            sessionStorage.removeItem('pkce_code_verifier');
-            sessionStorage.removeItem('redirect_url_after_login');
+            // Clean up the PKCE verifier
+            localStorage.removeItem('pkce_code_verifier');
+             // Do NOT clean up redirect_url_after_login here as it might be needed by error redirects
         }
       } else {
          setStatus('Không tìm thấy mã xác thực trong URL. Vui lòng thử lại.');

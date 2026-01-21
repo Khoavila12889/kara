@@ -130,14 +130,18 @@ T-Karaoke sử dụng cơ chế xác thực OAuth2 với PKCE (Proof Key for Cod
 VITE_YOUTUBE_API_KEY=your_youtube_api_key
 VITE_YOUTUBE_CLIENT_ID=your_youtube_client_id
 VITE_AUTH_PROXY_URL=https://youtube.goldenfarm.vn/api/youtube/callback
+VITE_APP_DOMAIN=your_domain
+VITE_APP_HOST=your_domain
+FRONTEND_URL=https://your_domain
+REDIRECT_URI=https://your_domain/youtube-auth
 ```
 
 #### File cấu hình auth proxy server (`auth-proxy-server/.env`):
 ```env
 YOUTUBE_CLIENT_ID=your_youtube_client_id
 YOUTUBE_CLIENT_SECRET=your_youtube_client_secret
-FRONTEND_URL=https://youtube.goldenfarm.vn
-REDIRECT_URI=https://youtube.goldenfarm.vn/youtube-auth
+FRONTEND_URL=https://your_domain
+REDIRECT_URI=https://your_domain/youtube-auth
 PORT=3001
 NODE_ENV=production
 ```

@@ -41,6 +41,8 @@ export default ({ mode }) => {
         '.localhost',
         '.ngrok.io', // Common tunnel services
         '.vercel.app', // Common deployment services
+        'hat.risingdragon.vn', // Add the required domain
+        
       ],
     }
   });

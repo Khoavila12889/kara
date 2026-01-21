@@ -168,27 +168,34 @@ const batchVideoDetailRequests = async (
 };
 
 // ============ OPTIMIZE SEARCH QUERY ============
-const buildOptimizedSearchQuery = (q: string) => {
-  // Add karaoke keyword intelligently
+const buildOptimizedSearchQuery = (q: string, mode: 'karaoke' | 'music' = 'karaoke') => {
+  // Add mode-specific keyword intelligently
   const query = q.toLowerCase();
 
-  // Avoid duplication if "karaoke" already in query
-  if (query.includes('karaoke')) {
+  // Avoid duplication if mode keyword already in query
+  if (mode === 'karaoke' && query.includes('karaoke')) {
+    return q;
+  } else if (mode === 'music' && (query.includes('music') || query.includes('audio'))) {
     return q;
   }
 
-  // For Vietnamese, add proper ordering
-  const isVietnamese = /[àáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/.test(query);
-  if (isVietnamese) {
-    return `${q} karaoke vietnam`;
+  // For karaoke mode, add karaoke keyword
+  if (mode === 'karaoke') {
+    // For Vietnamese, add proper ordering
+    const isVietnamese = /[àáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/.test(query);
+    if (isVietnamese) {
+      return `${q} karaoke vietnam`;
+    }
+    return `${q} karaoke`;
   }
 
-  return `${q} karaoke`;
+  // For music mode, just return the query as-is (no karaoke keyword)
+  return q;
 };
 
 const MAX_PAGES = 1;
 
-export const useSearch = () => {
+export const useSearch = (initialMode: 'karaoke' | 'music' = 'karaoke') => {
   // Search State
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ExtendedSong[]>([]);
@@ -196,6 +203,7 @@ export const useSearch = () => {
   const [error, setError] = useState<string | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | undefined>();
   const [pagesLoaded, setPagesLoaded] = useState(0); // Track number of pages loaded for current query
+  const [mode, setMode] = useState<'karaoke' | 'music'>(initialMode);
 
   // Optimization: Debounced query
   const debouncedQuery = useDebounce(query, DEBOUNCE_DELAY);
@@ -330,7 +338,7 @@ export const useSearch = () => {
         setError(null);
 
         try {
-          const optimizedQuery = buildOptimizedSearchQuery(q);
+          const optimizedQuery = buildOptimizedSearchQuery(q, mode);
 
           // Trong hàm search, khi xây dựng URL
           const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${SEARCH_LIMIT}&q=${encodeURIComponent(optimizedQuery)}&regionCode=VN&relevanceLanguage=vi&fields=items(id/videoId,snippet(title,thumbnails/default/url)),nextPageToken&key=${YOUTUBE_API_KEY}${pageToken ? `&pageToken=${pageToken}` : ''}`;
@@ -476,6 +484,11 @@ export const useSearch = () => {
     }
   }, [nextPageToken, loading, search]);
 
+  // Function to update mode
+  const setModeCallback = useCallback((newMode: 'karaoke' | 'music') => {
+    setMode(newMode);
+  }, []);
+
   return {
     query,
     setQuery,
@@ -491,5 +504,7 @@ export const useSearch = () => {
     clearResults,
     fetchVideoDetails, // Add the lazy loading function
     loadMore,
+    setMode: setModeCallback,
+    currentMode: mode,
   };
 };

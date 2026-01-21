@@ -47,7 +47,7 @@ import { animationStyles } from './styles/animationStyles';
 
 const RemoteView = () => {
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState('playlist'); // Mặc định hiển thị playlist trong music mode
+  const [activeTab, setActiveTab] = useState('playlist'); // Mặc định hiển thị playlist
   const [showSettings, setShowSettings] = useState(false);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
@@ -84,7 +84,9 @@ const RemoteView = () => {
     canMakeRequest,
     clearResults,
     loadMore,
-  } = useSearch();
+    setMode: setSearchMode,
+    currentMode
+  } = useSearch('karaoke');
 
   // Handle Firebase room error
   useEffect(() => {
@@ -97,18 +99,23 @@ const RemoteView = () => {
   useEffect(() => {
     if (!roomData) return;
 
-    // Sau đó chuyển tab dựa trên mode mới
+    // Update search mode when room mode changes
+    if (roomData.mode && roomData.mode !== currentMode) {
+      setSearchMode(roomData.mode);
+    }
+
+    // Set initial tab based on mode if no tab is selected yet
+    if (activeTab === 'playlist' && roomData.mode === 'music') {
+      // Giữ nguyên tab playlist nếu đang ở tab playlist
+    } else if (activeTab === 'playlist' && roomData.mode === 'karaoke') {
+      // Giữ nguyên tab playlist nếu đang ở tab playlist
+    }
+
+    // Handle tab switching when mode changes
     if (roomData.mode === 'music') {
-      // Trong chế độ music, nếu đang ở tab tìm kiếm thì chuyển sang playlist
-      if (activeTab === 'search') {
-        setActiveTab('youtube-playlists');
-      }
+      // Trong chế độ music, không chuyển tab tự động
     } else if (roomData.mode === 'karaoke') {
-      // Trong chế độ karaoke, nếu đang ở tab youtube-playlists thì chuyển sang search
-      // Không thay đổi tab playlist, để người dùng có thể xem danh sách phát
-      if (activeTab === 'youtube-playlists') {
-        setActiveTab('search');
-      }
+      // Trong chế độ karaoke, không chuyển tab tự động
     }
 
     // Debug search state
@@ -121,7 +128,7 @@ const RemoteView = () => {
       usageStats,
       lastKeyword
     });
-  }, [roomData, activeTab, query, searchResults, searchLoading, searchError, apiUsage, usageStats, lastKeyword]);
+  }, [roomData, activeTab, query, searchResults, searchLoading, searchError, apiUsage, usageStats, lastKeyword, currentMode, setSearchMode]);
 
   const {
     isAuthenticated,
@@ -491,8 +498,44 @@ const RemoteView = () => {
 
   
 
+  const handlePlaySong = useCallback(async (song: ExtendedSong) => {
+    if (!roomId || !roomData) return;
+
+    try {
+      const queue = roomData.queue || [];
+      const newQueue = [...queue, song]; // Add song to the end
+
+      // If nothing is playing, make this the current song and start playing
+      // Otherwise, add it to the queue and it will play in order
+      const newCurrentIndex = roomData.currentIndex === -1 ? 0 : roomData.currentIndex;
+      const newPlaying = roomData.currentIndex === -1 ? true : roomData.playing;
+
+      updateRoomData({
+        queue: newQueue,
+        currentIndex: newCurrentIndex,
+        playing: newPlaying,
+        currentPlaylistId: null // Reset playlist ID when adding individual songs
+      });
+      setActiveTab('playlist'); // Switch to playlist tab to show the added song
+      Modal.success({
+        title: 'Đã thêm vào danh sách phát',
+        content: `"${song.title}" sẽ sớm được phát.`
+      });
+    } catch (err) {
+      Modal.error({
+        title: 'Lỗi',
+        content: 'Không thể thêm bài hát vào danh sách phát.'
+      });
+      logger.error('Failed to play song immediately:', err);
+    }
+  }, [roomId, roomData, updateRoomData]);
+
+
   const SongListItemComponent = ({ song }: { song: ExtendedSong }) => (
-    <div className="playlist-item group bg-gray-100 hover:bg-gray-200">
+    <div
+      className="playlist-item group bg-gray-100 hover:bg-gray-200 cursor-pointer"
+      onClick={() => handlePlaySong(song)} // Added onClick handler
+    >
       <img
         src={song.thumbnail}
         alt={song.title}
@@ -506,33 +549,29 @@ const RemoteView = () => {
         <p className="text-sm truncate text-gray-600">{song.channelTitle}</p>
       </div>
       <div className="flex items-center gap-1">
-        {roomData?.mode !== 'music' && (
-          <>
-            <Button
-              type="text"
-              icon={<PlusOutlined />}
-              onClick={() => handleAddSong(song)}
-              title="Add to queue"
-              aria-label="Add to queue"
-              className="icon-only"
-              style={{ color: '#9710F6' }}
-            />
-            <Button
-              type="text"
-              icon={<StarFilled />}
-              onClick={() => handleSetPriority(song)}
-              title="Prioritize"
-              aria-label="Prioritize"
-              className={`icon-only ${song.isPriority ? 'text-yellow-400' : ''}`}
-              style={{ color: song.isPriority ? '#9710F6' : '#9710F680' }}
-            />
-          </>
-        )}
+        <Button
+          type="text"
+          icon={<PlusOutlined />}
+          onClick={(e) => { e.stopPropagation(); handleAddSong(song); }} // Stop propagation
+          title="Add to queue"
+          aria-label="Add to queue"
+          className="icon-only"
+          style={{ color: '#9710F6' }}
+        />
+        <Button
+          type="text"
+          icon={<StarFilled />}
+          onClick={(e) => { e.stopPropagation(); handleSetPriority(song); }} // Stop propagation
+          title="Prioritize"
+          aria-label="Prioritize"
+          className={`icon-only ${song.isPriority ? 'text-yellow-400' : ''}`}
+          style={{ color: song.isPriority ? '#9710F6' : '#9710F680' }}
+        />
       </div>
     </div>
   );
 
-  const SongListItem = useMemo(() => React.memo(SongListItemComponent), [handleAddSong, handleSetPriority, roomData?.mode]);
+  const SongListItem = useMemo(() => React.memo(SongListItemComponent), [handleAddSong, handleSetPriority, handlePlaySong, roomData?.mode]);
 
   const PlaylistItemComponent = ({ playlist }: { playlist: YouTubePlaylist }) => (
     <Card
@@ -594,7 +633,7 @@ const RemoteView = () => {
         key: 'youtube-playlists',
         label: (
           <Badge count={userPlaylists.length}>
-            <YoutubeOutlined /> Playlist
+            <YoutubeOutlined /> Playlist của tôi
           </Badge>
         ),
         children: (
@@ -660,7 +699,7 @@ const RemoteView = () => {
       ),
       children: (
         <div className="max-h-[calc(100vh-280px)]">
-          {roomData && (
+          {roomData ? (
             <Playlist
               songs={roomData.queue || []}
               currentSong={roomData.queue?.[roomData.currentIndex]}
@@ -668,6 +707,10 @@ const RemoteView = () => {
               onSetPriority={handleSetPriority}
               mode={roomData.mode}
             />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p>Đang tải danh sách phát...</p>
+            </div>
           )}
         </div>
       )
@@ -694,7 +737,8 @@ const RemoteView = () => {
     handleRemoveSong,
     handleSetPriority,
     login,
-    logout
+    logout,
+    importPlaylist
   ]);
 
   const getBackgroundClass = (bgValue: string): string => {

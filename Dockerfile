@@ -68,6 +68,8 @@ mkdir -p /var/log
 
 # Start the auth proxy server in background
 cd /app/auth-proxy-server
+# Use environment variables from runtime
+export \$(cat .env | xargs) 2>/dev/null || true
 node dist/index.js > /var/log/auth-proxy.log 2>&1 &
 AUTH_PID=$!
 

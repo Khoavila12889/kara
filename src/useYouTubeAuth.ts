@@ -101,19 +101,19 @@ export const useYouTubeAuth = () => {
       if (isMobile) {
         // Lưu state trước khi redirect
         // const state = generateRandomString(32); // Removed as it's not used in callback for verification yet
-        sessionStorage.setItem('pkce_code_verifier', codeVerifier); // pkce_code_verifier already saved
-        
-        sessionStorage.setItem('redirect_url_after_login', window.location.href);
+        localStorage.setItem('pkce_code_verifier', codeVerifier); // Sử dụng localStorage thay vì sessionStorage để tồn tại sau redirect
+
+        localStorage.setItem('redirect_url_after_login', window.location.href);
         // Redirect trực tiếp (trang sẽ handle redirect back)
         window.location.href = authUrl;
       } else {
         // Desktop: dùng popup
         const authPopup = window.open(authUrl, '_blank', 'width=600,height=700');
-        
+
         if (!authPopup) {
-          Modal.error({ 
-            title: 'Lỗi', 
-            content: 'Popup bị chặn. Vui lòng cho phép popup trong trình duyệt.' 
+          Modal.error({
+            title: 'Lỗi',
+            content: 'Popup bị chặn. Vui lòng cho phép popup trong trình duyệt.'
           });
           setIsLoading(false);
           return;
@@ -121,27 +121,36 @@ export const useYouTubeAuth = () => {
 
         const handleMessage = (event: MessageEvent) => {
           if (event.origin !== window.location.origin) return;
-          
+
           setIsLoading(false);
 
           if (event.data.type === 'youtube_auth_success') {
-            const { access_token, user_info } = event.data;
+            const { access_token, user_info, refresh_token, expires_in } = event.data;
             localStorage.setItem('youtube_access_token', access_token);
             localStorage.setItem('youtube_user_info', JSON.stringify(user_info));
+            if (refresh_token) {
+              localStorage.setItem('youtube_refresh_token', refresh_token);
+            }
+            if (expires_in) {
+              localStorage.setItem('youtube_token_expires_at', (Date.now() + (expires_in * 1000)).toString());
+            }
             setIsAuthenticated(true);
             setUserInfo(user_info);
-            Modal.success({ 
-              title: 'Đăng nhập thành công', 
-              content: 'Đã kết nối với tài khoản YouTube.' 
+            // Xóa các item đã dùng
+            localStorage.removeItem('pkce_code_verifier');
+            localStorage.removeItem('redirect_url_after_login');
+            Modal.success({
+              title: 'Đăng nhập thành công',
+              content: 'Đã kết nối với tài khoản YouTube.'
             });
           } else if (event.data.type === 'youtube_auth_error') {
-            Modal.error({ 
-              title: 'Đăng nhập thất bại', 
-              content: `Lỗi: ${event.data.error}` 
+            Modal.error({
+              title: 'Đăng nhập thất bại',
+              content: `Lỗi: ${event.data.error}`
             });
           }
         };
-        
+
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
       }

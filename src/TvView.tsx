@@ -294,7 +294,7 @@ const TvView = () => {
           <div className="bg-gray-800/50 rounded-2xl p-8 max-w-md w-full border border-gray-700 shadow-2xl">
             <div className="text-center">
               <h2 className="text-3xl font-bold mb-2 text-[#10F615]">Quét mã QR kết nối </h2>
-              <p className="text-gray-300 mb-6">Điện thoại dùng  Camera, Zalo hoặc apps QR Scans</p>
+              <p className="text-gray-300 mb-6">Điện thoại dùng  Camera, Zalo hoặc apps QR quét mã QR</p>
 
               <div className="bg-white p-4 rounded-lg inline-block mb-4">
                 <QRCodeCanvas value={remoteUrl} size={192} />
@@ -404,6 +404,9 @@ const TvView = () => {
             songs={roomData.queue || []}
             currentSong={currentSong}
             onSelectSong={handleSelectSong}
+            onRemoveSong={undefined} // TV view không có nút xóa
+            onSetPriority={undefined} // TV view không có nút ưu tiên
+            mode={roomData.mode}
           />
         </aside>
       </div>
