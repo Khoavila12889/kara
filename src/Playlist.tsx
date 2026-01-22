@@ -52,7 +52,7 @@ const Playlist: React.FC<PlaylistProps> = ({
   }
 
   return (
-    <div className="space-y-2 p-1 h-full overflow-y-auto">
+    <div className="space-y-2 p-1 h-full overflow-y-auto max-h-[calc(100vh-150px)]">
       {songs.map((song) => {
         const isPlaying = song.id === currentSong?.id;
         return (

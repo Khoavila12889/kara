@@ -101,7 +101,7 @@ const Playlist: React.FC<PlaylistProps> = ({
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col max-h-[calc(100vh-150px)]">
       <List
         height={500} // Adjust as needed
         itemCount={songs.length}

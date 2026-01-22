@@ -698,7 +698,7 @@ const RemoteView = () => {
         </Badge>
       ),
       children: (
-        <div className="max-h-[calc(100vh-280px)]">
+        <div className="max-h-[calc(100vh-220px)] pr-2 tabs-content-scrollable">
           {roomData ? (
             <Playlist
               songs={roomData.queue || []}

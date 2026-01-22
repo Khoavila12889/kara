@@ -400,14 +400,16 @@ const TvView = () => {
         </main>
         
         <aside className={`${asideClasses} flex-shrink-0`}>
-          <Playlist
-            songs={roomData.queue || []}
-            currentSong={currentSong}
-            onSelectSong={handleSelectSong}
-            onRemoveSong={undefined} // TV view không có nút xóa
-            onSetPriority={undefined} // TV view không có nút ưu tiên
-            mode={roomData.mode}
-          />
+          <div className="h-full overflow-y-auto max-h-[calc(100vh-200px)]">
+            <Playlist
+              songs={roomData.queue || []}
+              currentSong={currentSong}
+              onSelectSong={handleSelectSong}
+              onRemoveSong={undefined} // TV view không có nút xóa
+              onSetPriority={undefined} // TV view không có nút ưu tiên
+              mode={roomData.mode}
+            />
+          </div>
         </aside>
       </div>
     </div>
