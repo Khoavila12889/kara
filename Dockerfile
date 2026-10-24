@@ -23,6 +23,8 @@ RUN npm prune --omit=dev
 
 FROM node:24.22.0-alpine
 WORKDIR /app
+# yt-dlp resolves the audio stream for background playback.
+RUN apk add --no-cache yt-dlp || (apk add --no-cache python3 py3-pip && pip install --no-cache-dir --break-system-packages yt-dlp)
 ENV NODE_ENV=production PORT=3000 ROOM_SERVICE=1 ROOM_DB_PATH=/data/rooms.sqlite FRONTEND_DIST=/app/frontend-dist
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=backend-builder /app/node_modules ./node_modules

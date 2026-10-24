@@ -4,4 +4,9 @@
     <string name="title_activity_main">Khoavila Music</string>
     <string name="package_name">vn.khoavila.music</string>
     <string name="custom_url_scheme">vn.khoavila.music</string>
+    <string name="playback_channel_name">Phát nhạc</string>
+    <string name="playback_channel_description">Giữ nhạc phát khi ứng dụng ở nền hoặc màn hình tắt</string>
+    <string name="playback_notification_title">Khoavila Music</string>
+    <string name="playback_notification_text">Đang phát nhạc ở nền</string>
+    <string name="playback_notification_stop">Dừng</string>
 </resources>

@@ -4,8 +4,9 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { createRoom, database, ref, roomToken, runTransaction, remoteRoomUrl } from '../roomDatabase';
 import { useRoom } from '../hooks/useRoom';
 import { RoomData, ExtendedSong } from '../types';
-import YouTubePlayer from '../YouTubePlayer';
-import { isNativeApp } from '../platform';
+import YouTubePlayer, { type YouTubePlayerHandle } from '../YouTubePlayer';
+import { isNativeApp, apiOrigin } from '../platform';
+import { NativeAudio } from '../plugins/nativeAudio';
 import { useDpad } from './useDpad';
 import { useMusicSearch } from './useMusicSearch';
 import { enqueue, nextSong, removeSong } from './queue';
@@ -35,12 +36,15 @@ export default function MusicApp() {
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [online, setOnline] = useState(navigator.onLine);
-  const [appActive, setAppActive] = useState(true);
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
   const [panel, setPanel] = useState<'search' | 'queue'>('search');
   const [dialog, setDialog] = useState<Dialog>(null);
   const [slow, setSlow] = useState(false);
+  const playerHandle = useRef<YouTubePlayerHandle>(null);
+  const nativeModeRef = useRef(false);
+  const nativeSongRef = useRef<string | null>(null);
+  const [nativeMode, setNativeMode] = useState(false);
   const { roomData, error: roomError } = useRoom(roomId);
   const search = useMusicSearch();
   const currentSong = roomData?.queue[roomData.currentIndex];
@@ -67,16 +71,89 @@ export default function MusicApp() {
   // Remote clients can append to an idle room without selecting a track.
   useEffect(() => {
     if (busy || !roomData || !online || actionError || roomError) return;
-    if (!appActive && roomData.playing) {
-      void mutate(state => ({ ...state, playing: false }));
-    } else if (appActive && roomData.queue.length && roomData.currentIndex === -1 && !roomData.playing) {
+    if (roomData.queue.length && roomData.currentIndex === -1 && !roomData.playing) {
       void mutate(state => {
         if (state.currentIndex !== -1 || state.playing || !state.queue.length) return state;
         const priority = state.queue.findIndex(song => song.isPriority);
         return { ...state, currentIndex: priority < 0 ? 0 : priority, playing: true };
       });
     }
-  }, [roomData, busy, appActive, online, actionError, roomError, mutate]);
+  }, [roomData, busy, online, actionError, roomError, mutate]);
+
+  // Native background audio: keep video in the WebView while the app is
+  // visible, switch to the Media3 player when it is not, then sync back.
+  const switchToNative = useCallback(async () => {
+    const state = latest.current.roomData;
+    const song = state ? state.queue[state.currentIndex] : undefined;
+    if (!state?.playing || !song || nativeModeRef.current) return;
+    const positionMs = Math.max(0, Math.round((playerHandle.current?.getCurrentTime() ?? 0) * 1000));
+    nativeModeRef.current = true;
+    nativeSongRef.current = song.id;
+    setNativeMode(true);
+    playerHandle.current?.pause();
+    try {
+      await NativeAudio.setTrack({
+        url: `${apiOrigin}/api/stream/${song.id}`,
+        title: song.title,
+        artist: song.channelTitle || 'Khoavila',
+        artwork: song.thumbnail,
+        positionMs,
+      });
+    } catch {
+      nativeModeRef.current = false;
+      nativeSongRef.current = null;
+      setNativeMode(false);
+      setActionError('Không thể phát nhạc ở nền.');
+    }
+  }, []);
+
+  const switchToWeb = useCallback(async () => {
+    if (!nativeModeRef.current) return;
+    nativeModeRef.current = false;
+    nativeSongRef.current = null;
+    setNativeMode(false);
+    let positionMs = 0;
+    try { positionMs = (await NativeAudio.getStatus()).positionMs; } catch { /* ignore */ }
+    await NativeAudio.stop().catch(() => {});
+    playerHandle.current?.seekTo(positionMs / 1000);
+    if (latest.current.roomData?.playing) playerHandle.current?.play();
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeApp) return;
+    let disposed = false;
+    const handles: { remove: () => Promise<void> }[] = [];
+    void (async () => {
+      const ended = await NativeAudio.addListener('ended', () => {
+        if (nativeModeRef.current) void mutate(nextSong);
+      });
+      const stateChange = await NativeAudio.addListener('stateChange', ({ playing }) => {
+        if (!nativeModeRef.current || playing) return;
+        void mutate(state => (state.playing ? { ...state, playing: false } : state));
+      });
+      if (disposed) { void ended.remove(); void stateChange.remove(); }
+      else handles.push(ended, stateChange);
+    })();
+    return () => {
+      disposed = true;
+      handles.forEach(handle => void handle.remove());
+    };
+  }, [mutate]);
+
+  // Load the next track into the native player while it owns playback.
+  useEffect(() => {
+    if (!nativeMode || !roomData?.playing) return;
+    const song = roomData.queue[roomData.currentIndex];
+    if (!song || nativeSongRef.current === song.id) return;
+    nativeSongRef.current = song.id;
+    void NativeAudio.setTrack({
+      url: `${apiOrigin}/api/stream/${song.id}`,
+      title: song.title,
+      artist: song.channelTitle || 'Khoavila',
+      artwork: song.thumbnail,
+      positionMs: 0,
+    }).catch(() => {});
+  }, [nativeMode, roomData?.playing, roomData?.currentIndex, roomData?.queue]);
 
   const start = async (fresh = false) => {
     if (startingRef.current) return;
@@ -126,7 +203,8 @@ export default function MusicApp() {
     const listeners = [
       NativeApp.addListener('backButton', back),
       NativeApp.addListener('appStateChange', ({ isActive }) => {
-        setAppActive(isActive);
+        if (isActive) void switchToWeb();
+        else void switchToNative();
       }),
     ];
     void Promise.all(listeners).then(handles => { if (disposed) handles.forEach(handle => void handle.remove()); });
@@ -134,7 +212,7 @@ export default function MusicApp() {
       disposed = true; window.removeEventListener('keydown', key);
       void Promise.all(listeners).then(handles => handles.forEach(handle => void handle.remove()));
     };
-  }, [mutate]);
+  }, [mutate, switchToNative, switchToWeb]);
 
   const add = async (song: ExtendedSong) => {
     if (await mutate(state => enqueue(state, song))) setNotice(`Đã thêm “${song.title}” vào hàng đợi.`);
@@ -167,7 +245,7 @@ export default function MusicApp() {
         <section className="music-player-column" aria-label="Trình phát nhạc">
           <div className="music-section-heading"><p className="music-eyebrow">KHÔNG GIAN CỦA BẠN</p><span>YouTube</span></div>
           <div className="music-video">
-            {currentSong ? <YouTubePlayer foregroundOnly song={currentSong} playing={roomData.playing && appActive} onEnded={() => void mutate(nextSong)}
+            {currentSong ? <YouTubePlayer ref={playerHandle} foregroundOnly song={currentSong} playing={roomData.playing} onEnded={() => void mutate(nextSong)}
               onPlayingChange={playing => void mutate(state => ({ ...state, playing }))}
               onError={() => { setActionError('Bài này không phát được. Hãy chọn bài khác hoặc bấm Chuyển bài.'); void mutate(state => ({ ...state, playing: false })); }}
               className="music-video-player" /> : <div className="music-video-empty"><span aria-hidden="true">♫</span><h2>Một giai điệu cho hôm nay</h2><p>Tìm bài hát để bắt đầu nghe.</p></div>}

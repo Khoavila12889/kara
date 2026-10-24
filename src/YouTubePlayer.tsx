@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { forwardRef, useRef, useState, useEffect, useImperativeHandle } from 'react';
 import ReactPlayer from 'react-player/youtube';
 import { ExtendedSong } from './types';
 import { logger } from './logger';
@@ -16,7 +16,14 @@ interface YouTubePlayerProps {
   foregroundOnly?: boolean;
 }
 
-const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, onPlayingChange, className, onStreamAvailable, foregroundOnly }) => {
+export interface YouTubePlayerHandle {
+  getCurrentTime(): number;
+  seekTo(seconds: number): void;
+  play(): void;
+  pause(): void;
+}
+
+const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(({ song, playing, onEnded, onError, onPlayingChange, className, onStreamAvailable, foregroundOnly }, ref) => {
   const playerRef = useRef<ReactPlayer>(null);
   const [isReady, setIsReady] = useState(false);
   const [needsGesture, setNeedsGesture] = useState(false);
@@ -26,6 +33,14 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
     getPlayer: () => playerRef.current?.getInternalPlayer(),
     onPlayingChange, onNext: onEnded,
   });
+
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => playerRef.current?.getCurrentTime() ?? 0,
+    seekTo: (seconds: number) => { playerRef.current?.seekTo(seconds, 'seconds'); },
+    play: () => { playerRef.current?.getInternalPlayer()?.playVideo?.(); },
+    pause: () => { playerRef.current?.getInternalPlayer()?.pauseVideo?.(); },
+  }), []);
+
 
   useEffect(() => {
     if (!isReady || !playerRef.current) {
@@ -142,7 +157,9 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
       >Bấm để bật âm thanh</button>}
     </div>
   );
-};
+});
+
+YouTubePlayer.displayName = 'YouTubePlayer';
 
 export default YouTubePlayer;
 

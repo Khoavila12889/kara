@@ -124,7 +124,9 @@ app.post(['/', '/api/auth', '/api/youtube/callback'], async (req, res) => {
 const server = createServer(app);
 if (process.env.ROOM_SERVICE === '1') {
     const { installRooms } = require('./room-service');
+    const { installStream } = require('./stream-service');
     const rooms = installRooms(app, server, process.env.ROOM_DB_PATH || './data/rooms.sqlite', allowedOrigins);
+    installStream(app);
     app.use((_req, res, next) => {res.setHeader('Referrer-Policy','no-referrer');next();});
     if (process.env.FRONTEND_DIST) {
         const directory = resolve(process.env.FRONTEND_DIST);
