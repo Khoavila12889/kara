@@ -87,13 +87,21 @@ export default function MusicApp() {
     const song = state ? state.queue[state.currentIndex] : undefined;
     if (!state?.playing || !song || nativeModeRef.current) return;
     const positionMs = Math.max(0, Math.round((playerHandle.current?.getCurrentTime() ?? 0) * 1000));
+    const url = `${apiOrigin}/api/stream/${song.id}`;
+    try {
+      // Only hand over to the native player when the stream is actually available.
+      const probe = await fetch(url, { headers: { Range: 'bytes=0-1' }, signal: AbortSignal.timeout(8000) });
+      if (!probe.ok) return;
+    } catch {
+      return;
+    }
     nativeModeRef.current = true;
     nativeSongRef.current = song.id;
     setNativeMode(true);
     playerHandle.current?.pause();
     try {
       await NativeAudio.setTrack({
-        url: `${apiOrigin}/api/stream/${song.id}`,
+        url,
         title: song.title,
         artist: song.channelTitle || 'Khoavila',
         artwork: song.thumbnail,
@@ -131,8 +139,15 @@ export default function MusicApp() {
         if (!nativeModeRef.current || playing) return;
         void mutate(state => (state.playing ? { ...state, playing: false } : state));
       });
-      if (disposed) { void ended.remove(); void stateChange.remove(); }
-      else handles.push(ended, stateChange);
+      const error = await NativeAudio.addListener('error', () => {
+        if (!nativeModeRef.current) return;
+        // Native playback failed (stream unavailable): fall back to the video
+        // player instead of leaving the app silent.
+        void switchToWeb();
+        setActionError('Không phát được nhạc ở nền. Đang quay lại trình phát trong ứng dụng.');
+      });
+      if (disposed) { void ended.remove(); void stateChange.remove(); void error.remove(); }
+      else handles.push(ended, stateChange, error);
     })();
     return () => {
       disposed = true;

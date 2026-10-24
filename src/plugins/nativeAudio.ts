@@ -22,6 +22,10 @@ export interface NativeAudioPlugin {
   getStatus(): Promise<NativeAudioStatus>;
   addListener(eventName: 'ended', listener: () => void): Promise<PluginListenerHandle>;
   addListener(
+    eventName: 'error',
+    listener: (error: { message: string; code?: number }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
     eventName: 'stateChange',
     listener: (state: { playing: boolean }) => void,
   ): Promise<PluginListenerHandle>;

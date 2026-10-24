@@ -160,4 +160,12 @@ public class NativeAudioPlugin extends Plugin implements Player.Listener {
             notifyListeners("ended", new JSObject());
         }
     }
+
+    @Override
+    public void onPlayerError(androidx.media3.common.PlaybackException error) {
+        JSObject data = new JSObject();
+        data.put("message", error.getMessage() == null ? "Không phát được audio." : error.getMessage());
+        data.put("code", error.errorCode);
+        notifyListeners("error", data);
+    }
 }
