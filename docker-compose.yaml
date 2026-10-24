@@ -15,6 +15,8 @@ services:
     restart: unless-stopped
     environment:
       FRONTEND_URL: https://khoavila.io.vn
+      # Capacitor Android WebView origin (server.androidScheme = https).
+      ANDROID_APP_ORIGINS: https://localhost
     volumes:
       - ./data/rooms:/data
     healthcheck:
