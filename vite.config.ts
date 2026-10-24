@@ -9,6 +9,7 @@ export default ({ mode }) => {
 
   return defineConfig({
     plugins: [react()],
+    optimizeDeps: { entries: ['index.html'] },
     server: {
       proxy: {'/api/rooms': {target:'http://127.0.0.1:3001',ws:true}},
       host: true, // This allows external connections

@@ -8,10 +8,18 @@
     "build": "vite build",
     "build:tsc": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:android": "node tools/check-android-env.mjs && tsc --noEmit && vite build --mode android",
+    "android:sync": "npm run build:android && cap sync android",
+    "android:open": "cap open android",
+    "test:android": "node --experimental-strip-types tests/android-queue.test.ts",
+    "test:android-ui": "playwright test --config playwright.android.config.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
     "@tanstack/react-virtual": "^3.13.16",
     "antd": "^6.1.4",
     "axios": "^1.13.2",
@@ -27,6 +35,8 @@
     "socket.io-client": "4.8.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "@playwright/test": "1.64.1",
     "@types/lodash": "^4.17.23",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
@@ -42,5 +52,8 @@
     "tailwindcss": "^3.3.3",
     "typescript": "^5.0.2",
     "vite": "^7.3.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

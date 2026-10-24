@@ -16,7 +16,9 @@ if (!FRONTEND_URL) {
     process.exit(1);
 }
 
-const allowedOrigins = FRONTEND_URL.split(',').map(url => url.trim());
+// Explicit opt-in for packaged Android; do not enable arbitrary WebView origins.
+const allowedOrigins = [FRONTEND_URL, process.env.ANDROID_APP_ORIGINS || '']
+    .flatMap(value => value.split(',')).map(url => url.trim()).filter(Boolean);
 console.log("Allowed frontend origins:", allowedOrigins);
 
 app.use(cors({ origin: allowedOrigins }));
@@ -127,7 +129,7 @@ if (process.env.ROOM_SERVICE === '1') {
     if (process.env.FRONTEND_DIST) {
         const directory = resolve(process.env.FRONTEND_DIST);
         app.use(express.static(directory));
-        app.get(['/', '/remote', '/youtube-auth'], (_req,res) => res.sendFile(resolve(directory,'index.html')));
+        app.get(['/', '/app', '/remote', '/youtube-auth'], (_req,res) => res.sendFile(resolve(directory,'index.html')));
     }
     const shutdown = () => {
         rooms.io.close(() => {rooms.store.close(); process.exit(0);});

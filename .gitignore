@@ -1,4 +1,10 @@
 # Logs
+test-results/
+playwright-report/
+*.apk
+*.aab
+*.jks
+*.keystore
 logs
 *.log
 npm-debug.log*

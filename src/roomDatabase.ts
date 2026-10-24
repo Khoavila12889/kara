@@ -1,11 +1,12 @@
 import { io } from 'socket.io-client';
+import { apiOrigin, publicOrigin } from './platform';
 
 export const database = Object.freeze({backend:'sqlite'});
 export type DatabaseReference = {id:string;field?:string};
 type State = {id:string;state:any;version:number};
 const keys = new Map<string,string>();
 const watches = new Map<string,Set<{next:(snapshot:any)=>void;error:(error:Error)=>void;version:number;active:boolean}>>();
-const socket = io({path:'/api/rooms/socket.io',autoConnect:false});
+const socket = io(apiOrigin || undefined, {path:'/api/rooms/socket.io',autoConnect:false});
 export function rememberRoomToken(id:string, token:string) {
   if (!/^[A-Z0-9]{6}$/.test(id) || !/^[A-Za-z0-9_-]{32,100}$/.test(token)) throw new Error('Mã truy cập phòng không hợp lệ.');
   keys.set(id,token);localStorage.setItem('karaokeRoomKey:'+id,token);
@@ -19,7 +20,7 @@ const params=new URLSearchParams(window.location.search);
 const roomKey=new URLSearchParams(window.location.hash.slice(1)).get('roomKey') || params.get('roomKey');
 if(params.get('roomId')&&roomKey) rememberRoomToken(params.get('roomId')!,roomKey);
 async function request(path:string, options:RequestInit={}) {
-  const response=await fetch('/api/rooms'+path,{...options,cache:'no-store',signal:AbortSignal.timeout(10000)});
+  const response=await fetch(apiOrigin+'/api/rooms'+path,{...options,cache:'no-store',signal:AbortSignal.timeout(10000)});
   const body=await response.json().catch(()=>({error:'Backend phòng không trả dữ liệu hợp lệ.'}));
   if(!response.ok) {const err=Object.assign(new Error(body.error||'Không thể kết nối phòng.'),{status:response.status});throw err;}
   return body;
@@ -34,7 +35,7 @@ async function createNewRoom():Promise<string> {
   rememberRoomToken(result.id,result.token);return result.id;
 }
 export function remoteRoomUrl(id:string) {
-  const url=new URL('/remote',window.location.origin);
+  const url=new URL('/remote',publicOrigin);
   url.searchParams.set('roomId',id);url.hash=new URLSearchParams({roomKey:roomToken(id)}).toString();return url.toString();
 }
 export function ref(_db:unknown,path:string):DatabaseReference {

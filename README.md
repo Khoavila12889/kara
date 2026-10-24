@@ -408,3 +408,8 @@ Dưới đây là những cập nhật mới nhất đã được tích hợp v�
 =======
 # kara
 
+# Android APK
+
+Hướng dẫn build Khoavila Music trên PC: [docs/android.md](docs/android.md).
+Giao diện app hỗ trợ cảm ứng và D-pad; skill CSS ở `.agents/skills/kara-app-css/`.
+

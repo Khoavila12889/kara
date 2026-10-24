@@ -1,6 +1,6 @@
 // src/logger.ts
 const LOG_PREFIX = '[KaraokeApp]';
-const isDev = process.env.NODE_ENV === 'development';
+const isDev = (import.meta as any).env.DEV;
 
 export const logger = {
   debug: (...args: any[]) => {

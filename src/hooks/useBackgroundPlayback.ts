@@ -5,6 +5,7 @@ interface PlaybackOptions {
   song?: ExtendedSong;
   playing: boolean;
   ready: boolean;
+  foregroundOnly?: boolean;
   getPlayer: () => any;
   onPlayingChange: (playing: boolean) => void;
   onNext: () => void;
@@ -23,7 +24,7 @@ export function useBackgroundPlayback(options: PlaybackOptions) {
 
   useEffect(() => {
     resumeOnBackgroundPause.current = false;
-    if (!options.song || !options.ready) return;
+    if (!options.song || !options.ready || options.foregroundOnly) return;
     const visibilityChanged = () => {
       const { playing, getPlayer } = latest.current;
       const player = getPlayer();
@@ -40,7 +41,7 @@ export function useBackgroundPlayback(options: PlaybackOptions) {
       resumeOnBackgroundPause.current = false;
       document.removeEventListener('visibilitychange', visibilityChanged);
     };
-  }, [options.song?.id, options.ready]);
+  }, [options.song?.id, options.ready, options.foregroundOnly]);
 
   useEffect(() => {
     if (!options.song || !options.ready || !('mediaSession' in navigator)) return;
@@ -91,7 +92,7 @@ export function useBackgroundPlayback(options: PlaybackOptions) {
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     // Retry once per background transition, never on a timer. An explicit
     // lock-screen/remote pause disarms this before it reaches the player.
-    if (document.visibilityState === 'hidden' && resumeOnBackgroundPause.current && latest.current.playing) {
+    if (!latest.current.foregroundOnly && document.visibilityState === 'hidden' && resumeOnBackgroundPause.current && latest.current.playing) {
       resumeOnBackgroundPause.current = false;
       latest.current.getPlayer()?.playVideo?.();
     }

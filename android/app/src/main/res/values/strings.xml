@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Khoavila Music</string>
+    <string name="title_activity_main">Khoavila Music</string>
+    <string name="package_name">vn.khoavila.music</string>
+    <string name="custom_url_scheme">vn.khoavila.music</string>
+</resources>

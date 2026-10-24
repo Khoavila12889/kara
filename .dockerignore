@@ -17,3 +17,6 @@ Dockerfile
 **/*.sqlite*
 data
 backups
+android
+test-results
+playwright-report

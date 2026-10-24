@@ -46,6 +46,7 @@ export interface Song {
 }
 
 export interface ExtendedSong extends Song {
+  detailsLoaded?: boolean;
   isPriority?: boolean;
   type?: 'youtube' | 'other';
 }

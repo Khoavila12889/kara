@@ -13,15 +13,16 @@ interface YouTubePlayerProps {
   onPlayingChange: (playing: boolean) => void;
   onStreamAvailable?: (stream: MediaStream) => void;
   className?: string;
+  foregroundOnly?: boolean;
 }
 
-const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, onPlayingChange, className, onStreamAvailable }) => {
+const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, onError, onPlayingChange, className, onStreamAvailable, foregroundOnly }) => {
   const playerRef = useRef<ReactPlayer>(null);
   const [isReady, setIsReady] = useState(false);
   const [needsGesture, setNeedsGesture] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const backgroundPlayback = useBackgroundPlayback({
-    song, playing, ready: isReady,
+    song, playing, ready: isReady, foregroundOnly,
     getPlayer: () => playerRef.current?.getInternalPlayer(),
     onPlayingChange, onNext: onEnded,
   });
@@ -36,9 +37,6 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ song, playing, onEnded, o
       return;
     }
     
-    const wasPlaying = prevPlayingRef.current;
-    prevPlayingRef.current = playing;
-
     if (playing) {
       internalPlayer.unMute?.();
       internalPlayer.setVolume?.(100);

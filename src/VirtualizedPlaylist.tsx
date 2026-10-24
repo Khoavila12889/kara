@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { FixedSizeList as List } from 'react-window';
+import { List } from 'react-window';
 import { Button, Empty } from 'antd';
 import { StarFilled, DeleteOutlined } from '@ant-design/icons';
 import { ExtendedSong } from './types';
@@ -82,7 +82,7 @@ const Playlist: React.FC<PlaylistProps> = ({
         </div>
       </div>
     );
-  }, [currentSong, onSelectSong, onSetPriority, onRemoveSong]);
+  }, [songs, currentSong, onSelectSong, onSetPriority, onRemoveSong]);
 
   if (songs.length === 0) {
     return (
@@ -102,14 +102,13 @@ const Playlist: React.FC<PlaylistProps> = ({
 
   return (
     <div className="h-full flex flex-col max-h-[calc(100vh-150px)]">
-      <List
-        height={500} // Adjust as needed
-        itemCount={songs.length}
-        itemSize={80} // Height of each row
-        width="100%"
-      >
-        {Row}
-      </List>
+      <List<{}>
+        style={{ height: 500, width: '100%' }}
+        rowCount={songs.length}
+        rowHeight={80}
+        rowComponent={Row}
+        rowProps={{}}
+      />
     </div>
   );
 };

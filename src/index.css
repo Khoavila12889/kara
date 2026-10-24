@@ -1,3 +1,5 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.app-loading { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #101017; color: #f5f2fa; font: 16px system-ui, sans-serif; }
