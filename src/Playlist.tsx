@@ -9,6 +9,7 @@ interface PlaylistProps {
   onSelectSong?: (song: ExtendedSong) => void;
   onRemoveSong?: (songId: string) => void;
   onSetPriority?: (song: ExtendedSong) => void;
+  variant?: 'tv' | 'remote';
   mode?: 'karaoke' | 'music';
 }
 
@@ -19,48 +20,39 @@ const Playlist: React.FC<PlaylistProps> = ({
   onRemoveSong,
   onSetPriority,
   mode,
+  variant = 'remote',
 }) => {
   const currentSongRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Scroll to the current song when it changes
-    if (currentSongRef.current) {
-      // Using a setTimeout to ensure DOM is updated before scrolling
-      setTimeout(() => {
-        currentSongRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-      }, 100);
-    }
-  }, [currentSong]);
+    const timer = window.setTimeout(() => {
+      const row = currentSongRef.current;
+      const scroller = row?.closest('.ant-tabs-content-holder, .tv-queue-scroll') as HTMLElement | null;
+      if (!row || !scroller) return;
+      const item = row.getBoundingClientRect(), bounds = scroller.getBoundingClientRect();
+      if (item.top < bounds.top || item.bottom > bounds.bottom) {
+        scroller.scrollTo({top:scroller.scrollTop+item.top-bounds.top-(bounds.height-item.height)/2,
+          behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+      }
+    },100);
+    return () => window.clearTimeout(timer);
+  }, [currentSong?.id]);
 
   if (songs.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Empty
-          description={
-            <span className="text-gray-400">
-              Danh sách phát trống.
-              <br />
-              Thêm bài hát từ tab tìm kiếm!
-            </span>
-          }
-        />
-      </div>
+      <div className="room-empty"><span className="room-empty-icon" aria-hidden="true">♫</span><h3>Danh sách đang trống</h3><p>{variant === 'tv' ? 'Quét mã QR bằng điện thoại để chọn bài hát.' : 'Tìm bài hát yêu thích và thêm vào cuộc vui.'}</p></div>
     );
   }
 
   return (
-    <div className="space-y-2 p-1 h-full overflow-y-auto max-h-[calc(100vh-150px)]">
+    <div className="room-song-list">
       {songs.map((song) => {
         const isPlaying = song.id === currentSong?.id;
         return (
           <div
             key={song.id}
             ref={isPlaying ? currentSongRef : null}
-            className={`group flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-all duration-200
-              ${isPlaying ? 'bg-blue-500/30' : 'bg-white hover:bg-gray-100'}`}
+            className={`room-song group ${isPlaying ? 'room-song-current' : ''}`}
             onClick={() => onSelectSong?.(song)}
           >
             <img
@@ -69,7 +61,7 @@ const Playlist: React.FC<PlaylistProps> = ({
               alt={song.title}
               loading="lazy"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64x48';
+                (e.target as HTMLImageElement).style.visibility = 'hidden';
               }}
             />
 
@@ -80,7 +72,7 @@ const Playlist: React.FC<PlaylistProps> = ({
               <p className="text-xs text-gray-400 truncate">{song.channelTitle || 'YouTube'}</p>
             </div>
 
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="room-song-actions">
               {onSetPriority && (
                 <Button
                   type="text"

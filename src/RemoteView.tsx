@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ref, runTransaction, set, getDatabase } from 'firebase/database';
-import { database } from './firebase';
-import { DatabaseReference } from 'firebase/database';
+
+
+
 import Playlist from './Playlist';
 import YouTubePlaylistManager from './YouTubePlaylistManager';
 import { RoomData, ExtendedSong, RoomMode, BackgroundOption, YouTubePlaylist, Song } from './types';
@@ -39,7 +40,7 @@ import { debounce } from 'lodash';
 import NowPlayingSection from './components/NowPlayingSection';
 import SearchSection from './components/SearchSection';
 import SettingsModal from './components/SettingsModal';
-import { useFirebaseRoom } from './hooks/useFirebaseRoom';
+import { useRoom } from './hooks/useRoom';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import SearchTab from './components/SearchTab';
 import RemoteHeader from './components/RemoteHeader';
@@ -47,15 +48,15 @@ import { animationStyles } from './styles/animationStyles';
 
 const RemoteView = () => {
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState('playlist'); // Mặc định hiển thị playlist
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'youtube-playlists' ? 'youtube-playlists' : 'playlist');
   const [showSettings, setShowSettings] = useState(false);
-  const [firebaseError, setFirebaseError] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState<string | null>(null);
 
   const [showYouTubePlaylistManager, setShowYouTubePlaylistManager] = useState(false);
   const [userPlaylists, setUserPlaylists] = useState<YouTubePlaylist[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
 
-  const { roomData, error: firebaseRoomError, updateRoomData } = useFirebaseRoom(searchParams.get('roomId'));
+  const { roomData, error: roomConnectionError, updateRoomData } = useRoom(searchParams.get('roomId'));
   const roomId = searchParams.get('roomId');
 
   const [background, setBackground] = useState(() => {
@@ -88,12 +89,13 @@ const RemoteView = () => {
     currentMode
   } = useSearch('karaoke');
 
-  // Handle Firebase room error
+  // Show connection and room access errors.
   useEffect(() => {
-    if (firebaseRoomError) {
-      setFirebaseError(firebaseRoomError);
+    if (roomConnectionError) {
+      setRoomError(roomConnectionError);
     }
-  }, [firebaseRoomError]);
+    else setRoomError(null);
+  }, [roomConnectionError]);
 
   // Handle room mode changes, tab switching and debug search state
   useEffect(() => {
@@ -290,7 +292,7 @@ const RemoteView = () => {
     if (!roomId || !isAuthenticated || !roomData) return;
 
     Modal.confirm({
-      title: ''-'',
+      title: 'Thêm playlist',
       content: `Thêm "${playlistTitle}" vào danh sách phát?`,
       okText: 'Thêm',
       icon: null,
@@ -300,16 +302,15 @@ const RemoteView = () => {
           const accessToken = getAccessToken();
           const videos = await fetchPlaylistVideos(playlistId, accessToken);
 
-          // Cập nhật queue trong Firebase
-          const oldQueue = roomData.queue || [];
-          const isPlayingSomething = oldQueue.length > 0 && roomData.currentIndex !== -1;
-          const newQueue = [...oldQueue, ...videos];
-
-          updateRoomData({
-            queue: newQueue,
-            currentIndex: isPlayingSomething ? roomData.currentIndex : 0,
-            playing: isPlayingSomething ? roomData.playing : true,
-            currentPlaylistId: isPlayingSomething ? roomData.currentPlaylistId : playlistId
+          await updateRoomData(current => {
+            const oldQueue = current.queue || [];
+            const isPlayingSomething = oldQueue.length > 0 && current.currentIndex !== -1;
+            return {
+              queue: [...oldQueue, ...videos],
+              currentIndex: isPlayingSomething ? current.currentIndex : 0,
+              playing: isPlayingSomething ? current.playing : true,
+              currentPlaylistId: isPlayingSomething ? current.currentPlaylistId : playlistId
+            };
           });
 
           Modal.success({
@@ -385,18 +386,11 @@ const RemoteView = () => {
     if (!roomId || !roomData) return;
 
     try {
-      const queue = roomData.queue || [];
-      if (queue.some((s: ExtendedSong) => s.id === song.id)) return;
-
-      const newQueue = [...queue, song];
-      const newCurrentIndex = roomData.currentIndex === -1 ? 0 : roomData.currentIndex;
-      const newPlaying = roomData.currentIndex === -1 ? true : roomData.playing;
-
-      updateRoomData({
-        queue: newQueue,
-        currentIndex: newCurrentIndex,
-        playing: newPlaying,
-        currentPlaylistId: null // Reset playlist khi thêm bài hát riêng lẻ
+      await updateRoomData(current => {
+        const queue = current.queue || [];
+        if (queue.some(s => s.id === song.id)) return {};
+        return {queue:[...queue,song],currentIndex:current.currentIndex === -1 ? 0 : current.currentIndex,
+          playing:current.currentIndex === -1 ? true : current.playing,currentPlaylistId:undefined};
       });
     } catch (err) {
       Modal.error({
@@ -408,58 +402,34 @@ const RemoteView = () => {
   }, [roomId, roomData, updateRoomData]);
 
   const handleSetPriority = useCallback((songToPrioritize: ExtendedSong) => {
-    if (!roomId || !roomData) return;
-
-    const { queue, currentIndex } = roomData;
-    if (!queue) return;
-
-    let newQueue = [...queue];
-    const songIndex = newQueue.findIndex(s => s.id === songToPrioritize.id);
-
-    if (songIndex === -1) {
-      const nextIndex = currentIndex === -1 ? 0 : currentIndex + 1;
-      newQueue.splice(nextIndex, 0, { ...songToPrioritize, isPriority: true });
-    } else {
-      const [song] = newQueue.splice(songIndex, 1);
-      song.isPriority = !song.isPriority;
-
-      if (song.isPriority) {
-        const nextIndex = currentIndex === -1 ? 0 : currentIndex + 1;
-        newQueue.splice(nextIndex, 0, song);
-      } else {
-        newQueue.splice(songIndex, 0, song);
-      }
-    }
-
-    // Reset priority for other songs
-    newQueue = newQueue.map(song => ({
-      ...song,
-      isPriority: song.id === songToPrioritize.id ? song.isPriority : false
-    }));
-
-    updateRoomData({ queue: newQueue });
-  }, [roomId, roomData, updateRoomData]);
+    if (!roomId) return;
+    void updateRoomData(current => {
+      const queue = [...(current.queue || [])];
+      const playingId = queue[current.currentIndex]?.id;
+      const index = queue.findIndex(song => song.id === songToPrioritize.id);
+      if (index === current.currentIndex && index !== -1) return {};
+      const chosen = index === -1 ? {...songToPrioritize,isPriority:true} : {...queue.splice(index,1)[0]};
+      if (index !== -1) chosen.isPriority = !chosen.isPriority;
+      const playingIndex = playingId ? queue.findIndex(song => song.id === playingId) : -1;
+      queue.splice(chosen.isPriority ? Math.max(0,playingIndex+1) : Math.max(0,index),0,chosen);
+      return {queue:queue.map(song=>({...song,isPriority:song.id===chosen.id?chosen.isPriority:false})),
+        currentIndex:playingId ? queue.findIndex(song=>song.id===playingId) : -1};
+    }).catch(()=>{});
+  }, [roomId, updateRoomData]);
 
   const handleRemoveSong = useCallback((songId: string) => {
-    if (!roomId || !roomData?.queue) return;
-
-    const { queue, currentIndex } = roomData;
-    const newQueue = queue.filter((s: ExtendedSong) => s.id !== songId);
-    const removedIndex = queue.findIndex((s: ExtendedSong) => s.id === songId);
-
-    let newCurrentIndex = currentIndex;
-
-    if (removedIndex < currentIndex) {
-      newCurrentIndex--;
-    } else if (removedIndex === currentIndex) {
-      newCurrentIndex = newQueue.length > 0 ? currentIndex % newQueue.length : -1;
-    }
-
-    updateRoomData({
-      queue: newQueue,
-      currentIndex: newCurrentIndex
-    });
-  }, [roomId, roomData, updateRoomData]);
+    if (!roomId) return;
+    void updateRoomData(current => {
+      const queue = current.queue || [];
+      const removedIndex = queue.findIndex(song => song.id === songId);
+      if (removedIndex === -1) return {};
+      const next = queue.filter(song=>song.id!==songId);
+      let index = current.currentIndex;
+      if (removedIndex < index) index--;
+      else if (removedIndex === index) index = next.length ? index % next.length : -1;
+      return {queue:next,currentIndex:index,playing:next.length>0&&current.playing};
+    }).catch(()=>{});
+  }, [roomId, updateRoomData]);
 
   const handleVoiceSearch = useCallback(() => {
     if (typeof (window as any).SpeechRecognition === 'undefined' &&
@@ -479,61 +449,30 @@ const RemoteView = () => {
   }, [isRecording, startRecording, stopRecording]);
 
   const handlePlayerControl = useCallback((action: 'toggle' | 'next' | 'prev') => {
-    if (!roomId || !roomData) return;
-
-    const { playing, queue, currentIndex } = roomData;
-
-    if (action === 'toggle') {
-      updateRoomData({ playing: !playing });
-    } else if (action === 'next') {
-      if (!queue || queue.length === 0) return;
-      const nextIndex = (currentIndex + 1) % queue.length;
-      updateRoomData({ currentIndex: nextIndex });
-    } else if (action === 'prev') {
-      if (!queue || queue.length === 0) return;
-      const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
-      updateRoomData({ currentIndex: prevIndex });
-    }
-  }, [roomId, roomData, updateRoomData]);
-
-  
+    if (!roomId) return;
+    void updateRoomData(current => {
+      if (action === 'toggle') return {playing:!current.playing};
+      const queue=current.queue || [];
+      if(!queue.length) return {};
+      return {currentIndex:(current.currentIndex+(action==='next'?1:-1)+queue.length)%queue.length};
+    }).catch(()=>{});
+  }, [roomId, updateRoomData]);
 
   const handlePlaySong = useCallback(async (song: ExtendedSong) => {
-    if (!roomId || !roomData) return;
-
+    if (!roomId) return;
     try {
-      const queue = roomData.queue || [];
-      const newQueue = [...queue, song]; // Add song to the end
-
-      // If nothing is playing, make this the current song and start playing
-      // Otherwise, add it to the queue and it will play in order
-      const newCurrentIndex = roomData.currentIndex === -1 ? 0 : roomData.currentIndex;
-      const newPlaying = roomData.currentIndex === -1 ? true : roomData.playing;
-
-      updateRoomData({
-        queue: newQueue,
-        currentIndex: newCurrentIndex,
-        playing: newPlaying,
-        currentPlaylistId: null // Reset playlist ID when adding individual songs
-      });
-      setActiveTab('playlist'); // Switch to playlist tab to show the added song
-      Modal.success({
-        title: 'Đã thêm vào danh sách phát',
-        content: `"${song.title}" sẽ sớm được phát.`
-      });
-    } catch (err) {
-      Modal.error({
-        title: 'Lỗi',
-        content: 'Không thể thêm bài hát vào danh sách phát.'
-      });
-      logger.error('Failed to play song immediately:', err);
-    }
-  }, [roomId, roomData, updateRoomData]);
+      await updateRoomData(current => ({queue:[...(current.queue||[]),song],
+        currentIndex:current.currentIndex===-1?0:current.currentIndex,
+        playing:current.currentIndex===-1?true:current.playing,currentPlaylistId:undefined}));
+      setActiveTab('playlist');
+      Modal.success({title:'Đã thêm vào danh sách phát',content:`"${song.title}" sẽ sớm được phát.`});
+    } catch (err) {Modal.error({title:'Lỗi',content:'Không thể thêm bài hát vào danh sách phát.'});}
+  }, [roomId, updateRoomData]);
 
 
   const SongListItemComponent = ({ song }: { song: ExtendedSong }) => (
     <div
-      className="playlist-item group bg-gray-100 hover:bg-gray-200 cursor-pointer"
+      className="room-search-song playlist-item group"
       onClick={() => handlePlaySong(song)} // Added onClick handler
     >
       <img
@@ -633,7 +572,7 @@ const RemoteView = () => {
         key: 'youtube-playlists',
         label: (
           <Badge count={userPlaylists.length}>
-            <YoutubeOutlined /> Playlist của tôi
+            <YoutubeOutlined /> Playlist
           </Badge>
         ),
         children: (
@@ -694,7 +633,7 @@ const RemoteView = () => {
       key: 'playlist',
       label: (
         <Badge count={roomData?.queue?.length || 0}>
-          <UnorderedListOutlined /> Danh sách phát
+          <UnorderedListOutlined /> Danh sách
         </Badge>
       ),
       children: (
@@ -818,10 +757,12 @@ const RemoteView = () => {
 
   return (
     <div
+      data-theme={localStorage.getItem('app-theme') || 'light'}
       className={`remote-view-container text-gray-800 p-2 ${background.startsWith('custom-bg-') ? 'custom-background' : background}`}
       style={background.startsWith('custom-bg-') ? { backgroundColor: background.replace('custom-bg-', '') } : {}}
     >
-      <RemoteHeader setShowSettings={setShowSettings} />
+      {roomError && <Alert type="error" showIcon message={roomError} style={{marginBottom:12}} />}
+      <RemoteHeader setShowSettings={setShowSettings} roomId={roomId} mode={roomData?.mode} />
       
       {/* Now Playing Section */}
       <NowPlayingSection
@@ -845,7 +786,7 @@ const RemoteView = () => {
         onChange={setActiveTab}
         items={tabItems}
         centered
-        className="flex-grow flex flex-col"
+        className="remote-tabs flex-grow flex flex-col"
         tabBarStyle={{ flexShrink: 0 }}
       />
       

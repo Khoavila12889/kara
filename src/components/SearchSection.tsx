@@ -22,9 +22,9 @@ const SearchSection = ({
     <>
       {/* Search Input - only for karaoke mode */}
       {roomData?.mode === 'karaoke' && (
-        <div className="sticky top-0 py-2 z-10 bg-inherit">
+        <div className="remote-search">
           <Input
-            autoFocus
+            aria-label="Tìm bài hát karaoke"
             placeholder="Nhập bài hát..."
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
@@ -41,6 +41,8 @@ const SearchSection = ({
             suffix={
               <Button
                 type="text"
+                aria-label="Voice Search"
+                title="Tìm bằng giọng nói"
                 className="hover:bg-white/10"
                 icon={<AudioOutlined />}
                 danger={isRecording}
@@ -53,8 +55,9 @@ const SearchSection = ({
 
       {/* Music Mode Search Input - specific for music mode */}
       {roomData?.mode === 'music' && (
-        <div className="sticky top-0 py-2 z-10 mb-3">
+        <div className="remote-search">
           <Input
+            aria-label="Tìm bài hát hoặc playlist"
             placeholder="bài hát hoặc playlists..."
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}

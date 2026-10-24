@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ref, onValue, runTransaction, set, DatabaseReference } from 'firebase/database';
-import { database } from '../firebase';
+import { ref, onValue, runTransaction } from '../roomDatabase';
+import { database } from '../roomDatabase';
 import { RoomData, ExtendedSong } from '../types';
 import { logger } from '../logger';
 
-export const useFirebaseRoom = (roomId: string | null) => {
+export const useRoom = (roomId: string | null) => {
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!roomId) return;
+    setRoomData(null);
+    setError(null);
+    if (!roomId) {setError('Thiếu mã phòng. Hãy quét QR trên TV.');return;}
 
     const roomRef = ref(database, 'rooms/' + roomId);
     
@@ -34,8 +36,8 @@ export const useFirebaseRoom = (roomId: string | null) => {
         }
       },
       (err) => {
-        setError('Không thể kết nối tới phòng');
-        logger.error('Firebase error:', err);
+        setError(err.message || 'Không thể kết nối tới phòng');
+        logger.error('Room connection error:', err);
       }
     );
 
@@ -53,12 +55,14 @@ export const useFirebaseRoom = (roomId: string | null) => {
     });
   }, [roomId]);
 
-  const updateRoomData = useCallback(async (updates: Partial<RoomData>) => {
+  const updateRoomData = useCallback(async (updates: Partial<RoomData> | ((current: RoomData) => Partial<RoomData>)) => {
     if (!roomId) return;
     
     const roomRef = ref(database, 'rooms/' + roomId);
-    await set(roomRef, { ...roomData, ...updates });
-  }, [roomId, roomData]);
+    try {
+      return await runTransaction(roomRef, current => ({...current, ...(typeof updates === 'function' ? updates(current) : updates)}));
+    } catch(err) {setError(err instanceof Error ? err.message : 'Không thể cập nhật phòng.');throw err;}
+  }, [roomId]);
 
   return { roomData, error, updateQueue, updateRoomData };
 };

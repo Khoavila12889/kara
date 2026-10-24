@@ -1,3 +1,4 @@
+import { database, ref, set } from '../roomDatabase';
 import { Modal, Card, Button, Badge, List, Tag, Segmented } from 'antd';
 import {
   WifiOutlined,
@@ -8,8 +9,8 @@ import {
   ToolOutlined,
   ClockCircleFilled
 } from '@ant-design/icons';
-import { ref, set } from 'firebase/database';
-import { database } from '../firebase';
+
+
 import { BackgroundOption } from '../types';
 
 interface SettingsModalProps {
@@ -55,7 +56,6 @@ const SettingsModal = ({
       open={showSettings}
       onCancel={() => setShowSettings(false)}
       footer={null}
-      style={{ top: 2 }}
       className="settings-modal"
       width={400}
     >
@@ -89,9 +89,9 @@ const SettingsModal = ({
           <Segmented
             options={[{ label: 'Karaoke', value: 'karaoke', icon: <span>🎤</span> }, { label: 'Nghe nhạc', value: 'music', icon: <span>🎧</span> }]}
             value={roomData?.mode || 'karaoke'}
-            onChange={(value) => {
+            onChange={async (value) => {
               if (!roomId) return;
-              set(ref(database, `rooms/${roomId}/mode`), value);
+              try {await set(ref(database, `rooms/${roomId}/mode`), value);} catch {return;}
               if (value === 'karaoke') {
                 setActiveTab('search');
                 if (query.trim()) {

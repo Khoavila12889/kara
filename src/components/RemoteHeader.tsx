@@ -1,22 +1,11 @@
 import React from 'react';
-import { Button } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
-
-interface RemoteHeaderProps {
-  setShowSettings: (show: boolean) => void;
-}
-
-const RemoteHeader: React.FC<RemoteHeaderProps> = React.memo(({ setShowSettings }) => (
-  <header className="remote-header flex justify-between items-center p-2">
-    <h1 className="text-xl text-[#9710F6] font-bold">Remote</h1>
-    <Button
-      type="text"
-      aria-label="Settings"
-      icon={<SettingOutlined className="text-xl" />}
-      className="text-gray-500 hover:text-white"
-      onClick={() => setShowSettings(true)}
-    />
-  </header>
+import {Button} from 'antd';
+import {CustomerServiceOutlined,SettingOutlined} from '@ant-design/icons';
+interface RemoteHeaderProps {setShowSettings:(show:boolean)=>void;roomId?:string|null;mode?:string;}
+const RemoteHeader:React.FC<RemoteHeaderProps>=React.memo(({setShowSettings,roomId,mode})=>(
+ <header className="remote-header">
+  <div className="remote-brand"><span className="remote-brand-mark"><CustomerServiceOutlined/></span><div><h1>Khoavila</h1><p>{roomId?`Phòng ${roomId}`:'Điều khiển âm nhạc'}<span className="remote-mode">{mode==='music'?'Music':'Karaoke'}</span></p></div></div>
+  <Button type="text" aria-label="Settings" title="Cài đặt phòng" icon={<SettingOutlined/>} onClick={()=>setShowSettings(true)}/>
+ </header>
 ));
-
 export default RemoteHeader;

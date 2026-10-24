@@ -26,14 +26,6 @@ body {
   flex-direction: column;
 }
 
-/* RemoteView specific styles */
-.remote-view-container {
-  height: 100vh;
-  width: 100vw;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
 
 /* Main content area that should scroll on mobile */
 .main-content-scrollable {
@@ -42,14 +34,6 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Container for the entire remote view with proper flex layout */
-.remote-view-container {
-  height: 100vh;
-  width: 100vw;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
 
 /* Fixed header */
 .remote-header {
@@ -479,10 +463,6 @@ body {
   will-change: transform;
 }
 
-/* Hiệu ứng mượt mà hơn cho toàn bộ giao diện */
-* {
-  scroll-behavior: smooth;
-}
 
 /* Focus cho khả năng truy cập */
 .btn:focus, .form-control:focus {
@@ -542,8 +522,6 @@ body {
 
 /* Prevent horizontal overflow */
 html {
-  overflow-x: hidden;
-  max-width: 100%;
   /* Fix for mobile scrolling issues */
   -webkit-overflow-scrolling: touch;
 }
@@ -560,16 +538,6 @@ html {
   }
 
   /* Override for Ant Design buttons to prevent oversized icons */
-  .ant-btn {
-    min-height: auto !important;
-    min-width: auto !important;
-  }
-
-  .ant-btn[type="text"] {
-    min-height: 24px !important;
-    min-width: 24px !important;
-    padding: 2px !important;
-  }
 
   /* Adjust font sizes for mobile */
   .text-mobile-sm {
@@ -773,27 +741,6 @@ button,
   animation: fadeIn 0.5s ease-out forwards;
 }
 
-/* Antd Tabs dark theme override */
-.ant-tabs-nav {
-  @apply border-b border-gray-700;
-}
-
-.ant-tabs-tab {
-  @apply text-gray-400;
-}
-
-.ant-tabs-tab:hover {
-  @apply text-white;
-}
-
-.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
-  @apply text-blue-500;
-}
-
-.ant-tabs-ink-bar {
-  @apply bg-blue-500;
-}
-
 /* Settings Modal */
 .settings-modal .ant-modal-content {
   @apply bg-gray-100 dark:bg-gray-800;
@@ -813,5 +760,54 @@ button,
 
 .settings-content {
   @apply space-y-6;
+}
+
+/* Container chính */
+.main-container {
+  position: relative;
+  min-height: 100vh; /* Chiều cao tối thiểu bằng 100% chiều cao viewport */
+}
+
+/* Phần nội dung có thể cuộn */
+.scrollable-content {
+  padding: 20px; /* Thêm padding nếu cần */
+  margin-right: 150px; /*预留空间给固定位置的QR码区域*/
+  overflow-y: auto; /* 允许垂直滚动 */
+  max-height: 100vh; /* 最大高度为视口高度 */
+}
+
+/* 部分QR码和"Scan with phone"固定在右上角 */
+.qr-section {
+  position: fixed;
+  top: 20px; /* 距离顶部的距离 */
+  right: 20px; /* 距离右边的距离 */
+  z-index: 1000; /* 确保QR码部分始终位于其他元素之上 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: white; /* 可选：背景色 */
+  border-radius: 8px; /* 可选：圆角 */
+  padding: 10px; /* 内边距 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* 可选：阴影效果 */
+}
+
+/* QR码图片样式 */
+.qr-image {
+  width: 120px; /* 调整QR码大小 */
+  height: 120px;
+  margin-bottom: 10px; /* 下边距 */
+}
+
+/* 文字样式 */
+.text-sm {
+  font-size: 0.875rem; /* 对应Tailwind的text-sm */
+}
+
+.text-gray-300 {
+  color: #d1d5db; /* 对应Tailwind的text-gray-300 */
+}
+
+.font-medium {
+  font-weight: 500; /* 对应Tailwind的font-medium */
 }
 

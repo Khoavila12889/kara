@@ -10,6 +10,7 @@ export default ({ mode }) => {
   return defineConfig({
     plugins: [react()],
     server: {
+      proxy: {'/api/rooms': {target:'http://127.0.0.1:3001',ws:true}},
       host: true, // This allows external connections
       port: 5173, // Explicitly set the port
       strictPort: false, // Allow fallback to another port if 5173 is busy

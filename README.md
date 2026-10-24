@@ -1,5 +1,8 @@
 # T-Karaoke: Hệ thống Karaoke qua YouTube
 
+> **Cập nhật 20/10/2026:** đồng bộ phòng đã chuyển sang **SQLite + Socket.IO**, không còn phụ thuộc Firebase. Dữ liệu production lưu ở `/home/kara/data/rooms/rooms.sqlite`. Xem [hướng dẫn SQLite](docs/sqlite-migration.md) để chạy, kiểm thử, backup và rollback. Các mô tả Firebase bên dưới là tài liệu kiến trúc cũ; dữ liệu Firebase cũ chưa nhập được do database bị vô hiệu hóa.
+
+
 Dự án T-Karaoke là một ứng dụng web cho phép người dùng tạo một phòng karaoke ảo, trong đó một màn hình lớn (TV) sẽ phát video karaoke từ YouTube, và nhiều người dùng khác có thể dùng điện thoại của mình làm điều khiển (remote) để tìm kiếm, thêm và quản lý danh sách phát.
 
 ## Luồng hoạt động chính

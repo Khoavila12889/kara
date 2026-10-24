@@ -9,3 +9,11 @@ dist
 
 # Ignore Docker related files
 Dockerfile
+
+**/node_modules
+**/dist
+**/.env
+.env*
+**/*.sqlite*
+data
+backups

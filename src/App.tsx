@@ -5,6 +5,7 @@ import RemoteView from './RemoteView';
 import YouTubeAuthCallback from './YouTubeAuthCallback';
 import ErrorBoundary from './ErrorBoundary'; // Import ErrorBoundary
 import './App.css';
+import './room-ui.css';
 
 function App() {
   // Lấy theme từ localStorage hoặc mặc định là light (hồng)
@@ -16,23 +17,26 @@ function App() {
       theme={{
         algorithm: themeAlgorithm,
         token: {
-          colorPrimary: '#FF69B4', // Hồng đậm
-          colorLink: '#FF69B4', // Link color
+          borderRadius: 12,
+          controlHeight: 44,
+          fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+          colorPrimary: '#7C3AED', // Hồng đậm
+          colorLink: '#7C3AED', // Link color
           colorSuccess: '#52c41a', // Green for success
           colorWarning: '#faad14', // Orange for warning
           colorError: '#ff4d4f', // Red for error
         },
         components: {
           Button: {
-            colorPrimary: '#FF69B4', // Hồng đậm
-            colorPrimaryHover: '#FFC0CB', // Hồng nhạt khi hover
-            colorPrimaryActive: '#E066FF', // Hồng tím khi active
+            colorPrimary: '#7C3AED', // Hồng đậm
+            colorPrimaryHover: '#8B5CF6', // Hồng nhạt khi hover
+            colorPrimaryActive: '#6D28D9', // Hồng tím khi active
             // Các nút khác có thể giữ nguyên hoặc điều chỉnh tùy theo thiết kế
             // colorPrimary: '#52c41a', // Example: Green if it needs to be different for some buttons
           },
           Tabs: {
-            itemSelectedColor: '#FF69B4', // Màu tab khi được chọn
-            inkBarColor: '#FF69B4', // Màu gạch dưới tab
+            itemSelectedColor: '#7C3AED', // Màu tab khi được chọn
+            inkBarColor: '#7C3AED', // Màu gạch dưới tab
           }
         },
       }}

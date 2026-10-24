@@ -1,0 +1,45 @@
+services:
+  frontend:
+    container_name: kara-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_YOUTUBE_API_KEY: ${VITE_YOUTUBE_API_KEY:-}
+        VITE_YOUTUBE_CLIENT_ID: ${VITE_YOUTUBE_CLIENT_ID:-}
+        VITE_AUTH_PROXY_URL: ${VITE_AUTH_PROXY_URL:-}
+        VITE_APP_DOMAIN: ${VITE_APP_DOMAIN:-}
+        VITE_APP_HOST: ${VITE_APP_HOST:-}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      FRONTEND_URL: https://khoavila.io.vn
+    volumes:
+      - ./data/rooms:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/rooms/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - auth
+    networks:
+      - shared_network
+
+  auth:
+    container_name: kara-auth
+    build:
+      context: ./auth-proxy-server
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    env_file:
+      - ./auth-proxy-server/.env
+    networks:
+      - shared_network
+
+networks:
+  shared_network:
+    external: true
