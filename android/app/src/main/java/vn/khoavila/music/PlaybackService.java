@@ -34,6 +34,7 @@ public class PlaybackService extends MediaSessionService {
                     .build(),
                 true
             )
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .setHandleAudioBecomingNoisy(true)
             .build();
 

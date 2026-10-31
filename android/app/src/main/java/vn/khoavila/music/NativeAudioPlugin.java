@@ -147,10 +147,11 @@ public class NativeAudioPlugin extends Plugin implements Player.Listener {
     }
 
     @Override
-    public void onIsPlayingChanged(boolean isPlaying) {
+    public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         if (controller != null && controller.getPlaybackState() == Player.STATE_ENDED) return;
         JSObject data = new JSObject();
-        data.put("playing", isPlaying);
+        // Buffering changes isPlaying, but must not pause the shared room.
+        data.put("playing", playWhenReady);
         notifyListeners("stateChange", data);
     }
 

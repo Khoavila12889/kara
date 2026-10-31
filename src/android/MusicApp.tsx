@@ -43,6 +43,7 @@ export default function MusicApp() {
   const [slow, setSlow] = useState(false);
   const playerHandle = useRef<YouTubePlayerHandle>(null);
   const nativeModeRef = useRef(false);
+  const handoff = useRef(Promise.resolve());
   const nativeSongRef = useRef<string | null>(null);
   const [nativeMode, setNativeMode] = useState(false);
   const { roomData, error: roomError } = useRoom(roomId);
@@ -88,13 +89,6 @@ export default function MusicApp() {
     if (!state?.playing || !song || nativeModeRef.current) return;
     const positionMs = Math.max(0, Math.round((playerHandle.current?.getCurrentTime() ?? 0) * 1000));
     const url = `${apiOrigin}/api/stream/${song.id}`;
-    try {
-      // Only hand over to the native player when the stream is actually available.
-      const probe = await fetch(url, { headers: { Range: 'bytes=0-1' }, signal: AbortSignal.timeout(8000) });
-      if (!probe.ok) return;
-    } catch {
-      return;
-    }
     nativeModeRef.current = true;
     nativeSongRef.current = song.id;
     setNativeMode(true);
@@ -136,8 +130,8 @@ export default function MusicApp() {
         if (nativeModeRef.current) void mutate(nextSong);
       });
       const stateChange = await NativeAudio.addListener('stateChange', ({ playing }) => {
-        if (!nativeModeRef.current || playing) return;
-        void mutate(state => (state.playing ? { ...state, playing: false } : state));
+        if (!nativeModeRef.current) return;
+        void mutate(state => (state.playing !== playing ? { ...state, playing } : state));
       });
       const error = await NativeAudio.addListener('error', () => {
         if (!nativeModeRef.current) return;
@@ -169,6 +163,13 @@ export default function MusicApp() {
       positionMs: 0,
     }).catch(() => {});
   }, [nativeMode, roomData?.playing, roomData?.currentIndex, roomData?.queue]);
+
+  // Room controls also apply while the native service owns playback.
+  useEffect(() => {
+    if (!nativeMode) return;
+    const action = roomData?.playing ? NativeAudio.play() : NativeAudio.pause();
+    void action.catch(() => setActionError('Không thể cập nhật trình phát nền.'));
+  }, [nativeMode, roomData?.playing]);
 
   const start = async (fresh = false) => {
     if (startingRef.current) return;
@@ -218,8 +219,11 @@ export default function MusicApp() {
     const listeners = [
       NativeApp.addListener('backButton', back),
       NativeApp.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) void switchToWeb();
-        else void switchToNative();
+        // Serialize rapid Home/open transitions so a late handoff cannot
+        // restart native audio after the foreground player has resumed.
+        handoff.current = handoff.current
+          .then(() => isActive ? switchToWeb() : switchToNative())
+          .catch(() => setActionError('Không thể chuyển trình phát.'));
       }),
     ];
     void Promise.all(listeners).then(handles => { if (disposed) handles.forEach(handle => void handle.remove()); });
@@ -260,7 +264,7 @@ export default function MusicApp() {
         <section className="music-player-column" aria-label="Trình phát nhạc">
           <div className="music-section-heading"><p className="music-eyebrow">KHÔNG GIAN CỦA BẠN</p><span>YouTube</span></div>
           <div className="music-video">
-            {currentSong ? <YouTubePlayer ref={playerHandle} foregroundOnly song={currentSong} playing={roomData.playing} onEnded={() => void mutate(nextSong)}
+            {currentSong ? <YouTubePlayer ref={playerHandle} foregroundOnly song={currentSong} playing={roomData.playing && !nativeMode} onEnded={() => void mutate(nextSong)}
               onPlayingChange={playing => void mutate(state => ({ ...state, playing }))}
               onError={() => { setActionError('Bài này không phát được. Hãy chọn bài khác hoặc bấm Chuyển bài.'); void mutate(state => ({ ...state, playing: false })); }}
               className="music-video-player" /> : <div className="music-video-empty"><span aria-hidden="true">♫</span><h2>Một giai điệu cho hôm nay</h2><p>Tìm bài hát để bắt đầu nghe.</p></div>}
