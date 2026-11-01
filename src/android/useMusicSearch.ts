@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { YOUTUBE_API_KEY } from '../config';
 import { ExtendedSong } from '../types';
 
-export function useMusicSearch() {
+export function useMusicSearch(accessToken = '') {
   const [results, setResults] = useState<ExtendedSong[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -14,12 +14,13 @@ export function useMusicSearch() {
     controller.current = request;
     setError(''); setResults([]);
     if (query.trim().length < 2) { setLoading(false); return; }
-    if (!YOUTUBE_API_KEY) { setError('Tìm kiếm chưa được cấu hình. Bạn vẫn có thể thêm bài từ điện thoại qua mã QR.'); setLoading(false); return; }
+    if (!YOUTUBE_API_KEY && !accessToken) { setError('Hãy kết nối tài khoản YouTube hoặc cấu hình API key để tìm kiếm.'); setLoading(false); return; }
     setLoading(true);
     const timeout = window.setTimeout(() => request.abort(), 15000);
     try {
-      const params = new URLSearchParams({ part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '12', q: query.trim(), key: YOUTUBE_API_KEY });
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`, { signal: request.signal });
+      const params = new URLSearchParams({ part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '12', q: query.trim() });
+      if (YOUTUBE_API_KEY) params.set('key', YOUTUBE_API_KEY);
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`, { signal: request.signal, headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined });
       if (!response.ok) throw new Error(response.status === 403 ? 'Không thể tìm kiếm: kiểm tra hạn mức và cấu hình YouTube.' : 'Tìm kiếm đang gián đoạn. Vui lòng thử lại.');
       const data = await response.json();
       if (controller.current !== request) return;

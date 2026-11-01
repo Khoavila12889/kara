@@ -12,6 +12,7 @@ không cần chạy lại `cap add android`.
    - `VITE_API_ORIGIN`: origin HTTPS của backend phòng, ví dụ `https://khoavila.io.vn` (không thêm `/api`).
    - `VITE_PUBLIC_WEB_ORIGIN`: origin HTTPS của web `/remote`, dùng trong mã QR.
    - `VITE_YOUTUBE_API_KEY`: public API key có quyền YouTube Data API v3 cho tìm kiếm. Nếu bỏ trống, app vẫn nhận bài qua remote; tìm trực tiếp sẽ thông báo chưa cấu hình. Đây là dữ liệu công khai trong APK, không điền client secret hay refresh token.
+   - `VITE_YOUTUBE_CLIENT_ID`: OAuth client ID dùng để kết nối tài khoản YouTube trong APK. Thêm `https://localhost/youtube-auth` vào Authorized redirect URIs của client.
 4. Chạy:
 
 ```sh
@@ -51,9 +52,9 @@ FRONTEND_URL=https://khoavila.io.vn
 ANDROID_APP_ORIGINS=https://localhost
 ```
 
-Biến này phải được truyền vào **process phục vụ `/api/rooms`** (service `frontend` trong Compose hiện tại),
-không chỉ service `auth`. Khi triển khai sau này, thêm vào `services.frontend.environment` rồi chỉ build/recreate
-service frontend. Không dùng wildcard CORS. Chưa cấu hình biến này thì APK sẽ bị backend từ chối origin.
+Biến này phải được truyền vào **cả process phục vụ `/api/rooms` và OAuth** (hai service `frontend` và `auth` trong
+Compose hiện tại). Không dùng wildcard CORS. Chưa cấu hình biến này thì APK sẽ bị backend từ chối origin hoặc
+không đổi được mã OAuth.
 Thay đổi này không được tự triển khai/restart trong công việc chuẩn bị source Android.
 Proxy HTTPS phải chuyển tiếp cả HTTP API và WebSocket tại `/api/rooms/socket.io`.
 
@@ -66,7 +67,7 @@ Proxy HTTPS phải chuyển tiếp cả HTTP API và WebSocket tại `/api/rooms
 - Android TV có Leanback launcher, icon/banner, không bắt buộc touchscreen. D-pad và Enter dùng được cho các nút; Back đóng dialog hoặc hỏi trước khi thoát.
 - Giao diện thích ứng portrait/landscape, không khóa hướng điện thoại. Activity giữ màn hình sáng khi đang hiển thị.
 - Nguồn phát là YouTube nhúng; cần mạng và video được phép nhúng. Không tải nhạc offline, không tách audio, không hứa hẹn phát khi khóa màn hình. App tạm dừng khi vào nền.
-- Bản đầu không cung cấp đăng nhập/import playlist Google bên trong WebView. Remote web hiện có vẫn hoạt động riêng.
+- Có thể kết nối tài khoản YouTube trong APK để tìm kiếm bằng OAuth; API key vẫn được dùng làm phương án dự phòng nếu chưa đăng nhập.
 
 ## Kiểm thử
 

@@ -9,6 +9,7 @@ import { isNativeApp, apiOrigin } from '../platform';
 import { NativeAudio } from '../plugins/nativeAudio';
 import { useDpad } from './useDpad';
 import { useMusicSearch } from './useMusicSearch';
+import { useYouTubeAuth } from '../useYouTubeAuth';
 import { enqueue, nextSong, removeSong } from './queue';
 import './music-app.css';
 
@@ -47,7 +48,8 @@ export default function MusicApp() {
   const nativeSongRef = useRef<string | null>(null);
   const [nativeMode, setNativeMode] = useState(false);
   const { roomData, error: roomError } = useRoom(roomId);
-  const search = useMusicSearch();
+  const youtubeAuth = useYouTubeAuth();
+  const search = useMusicSearch(youtubeAuth.getAccessToken());
   const currentSong = roomData?.queue[roomData.currentIndex];
   const latest = useRef({ roomId, roomData, dialog });
   latest.current = { roomId, roomData, dialog };
@@ -251,6 +253,7 @@ export default function MusicApp() {
       <a className="music-brand" href="#main"><span className="music-brand-mark" aria-hidden="true">♫</span><span>Khoavila<small>Không gian âm nhạc của bạn</small></span></a>
       <div className="music-header-actions">
         <span className={`music-connection ${!online || (roomId && roomError) ? 'is-offline' : ''}`} role="status"><i />{!online ? 'Mất mạng' : roomId && roomError ? 'Đang kết nối lại' : roomData ? `Phòng ${roomId}` : 'Music & TV'}</span>
+        <button className="music-button music-button-quiet" aria-label={youtubeAuth.isAuthenticated ? 'Tài khoản YouTube' : 'Kết nối YouTube'} disabled={youtubeAuth.isLoading} onClick={() => youtubeAuth.isAuthenticated ? youtubeAuth.logout() : void youtubeAuth.login()}>{youtubeAuth.isAuthenticated ? (youtubeAuth.userInfo?.name || 'YouTube') : 'Kết nối YouTube'}</button>
         {roomId && <button className="music-button music-button-quiet" aria-label="Kết nối" onClick={() => setDialog('connect')}><Icon name="link" /><span>Kết nối</span></button>}
       </div>
     </header>

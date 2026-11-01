@@ -39,6 +39,9 @@ services:
     restart: unless-stopped
     env_file:
       - ./auth-proxy-server/.env
+    environment:
+      # Must match the native Capacitor origin used by the APK OAuth callback.
+      ANDROID_APP_ORIGINS: https://localhost
     networks:
       - shared_network
 

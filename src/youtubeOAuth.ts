@@ -1,4 +1,6 @@
-type Flow = {state:string; verifier:string; redirect:string; createdAt:number; popup:boolean};
+import { apiOrigin, youtubeCallbackUrl } from './platform';
+
+type Flow = {state:string; verifier:string; redirect:string; callbackUrl:string; createdAt:number; popup:boolean};
 const prefix='youtube_oauth_flow:';
 const random = (length:number) => Array.from(crypto.getRandomValues(new Uint8Array(length)),b=>('0'+b.toString(16)).slice(-2)).join('');
 function safeRedirect(value:string) {const url=new URL(value,window.location.origin);if(url.origin!==window.location.origin)throw new Error('Đường dẫn trở về không hợp lệ.');return url.toString();}
@@ -6,13 +8,13 @@ export async function beginYouTubeOAuth(popup:boolean) {
   const clientId=(import.meta as any).env.VITE_YOUTUBE_CLIENT_ID;
   if(!clientId)throw new Error('Chưa cấu hình Google Client ID.');
   const returnTo=new URL(window.location.href);returnTo.searchParams.set('tab','youtube-playlists');
-  const flow:Flow={state:random(24),verifier:random(48),redirect:safeRedirect(returnTo.toString()),createdAt:Date.now(),popup};
+  const flow:Flow={state:random(24),verifier:random(48),redirect:safeRedirect(returnTo.toString()),callbackUrl:youtubeCallbackUrl,createdAt:Date.now(),popup};
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(flow.verifier));
   const challenge=btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   localStorage.setItem(prefix+flow.state,JSON.stringify(flow));
   for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key?.startsWith(prefix)){try{if(Date.now()-JSON.parse(localStorage.getItem(key)!).createdAt>600000)localStorage.removeItem(key);}catch{localStorage.removeItem(key);}}}
   const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  url.search=new URLSearchParams({client_id:clientId,redirect_uri:window.location.origin+'/youtube-auth',response_type:'code',scope:'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',code_challenge:challenge,code_challenge_method:'S256',access_type:'offline',prompt:'consent',state:flow.state}).toString();
+  url.search=new URLSearchParams({client_id:clientId,redirect_uri:flow.callbackUrl,response_type:'code',scope:'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',code_challenge:challenge,code_challenge_method:'S256',access_type:'offline',prompt:'consent',state:flow.state}).toString();
   return {url:url.toString(),state:flow.state};
 }
 export function saveYouTubeAuth(data:any) {
@@ -36,7 +38,7 @@ export function finishYouTubeOAuth(callbackUrl:string):Promise<Flow> {
     try{
       if(url.searchParams.get('error'))throw new Error('Bạn chưa cấp quyền truy cập YouTube.');
       if(!code)throw new Error('Google chưa trả mã xác thực.');
-      const response=await fetch('/api/youtube/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,code_verifier:flow.verifier}),signal:AbortSignal.timeout(25000)});
+      const response=await fetch(`${apiOrigin}/api/youtube/callback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,code_verifier:flow.verifier,redirect_uri:flow.callbackUrl}),signal:AbortSignal.timeout(25000)});
       const data=await response.json().catch(()=>({error:'Máy chủ đăng nhập trả phản hồi không hợp lệ.'}));
       if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Không thể hoàn tất đăng nhập Google.');
       saveYouTubeAuth(data);

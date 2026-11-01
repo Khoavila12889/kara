@@ -34,7 +34,7 @@ app.get('/health', (req, res) => {
  * exchanges it for an access token with Google, gets user info, and returns everything.
  */
 app.post(['/', '/api/auth', '/api/youtube/callback'], async (req, res) => {
-    const { code, code_verifier } = req.body;
+    const { code, code_verifier, redirect_uri } = req.body;
 
     if (!code || !code_verifier) {
         return res.status(400).json({
@@ -45,7 +45,7 @@ app.post(['/', '/api/auth', '/api/youtube/callback'], async (req, res) => {
     // Frontend uses a same-origin callback; the existing auth service owns Google secrets.
     if (process.env.ROOM_SERVICE === '1') {
         try {
-            const upstream = await axios.post('http://kara-auth:5000/', {code, code_verifier}, {timeout:20000, validateStatus:()=>true});
+            const upstream = await axios.post('http://kara-auth:5000/', {code, code_verifier, redirect_uri}, {timeout:20000, validateStatus:()=>true});
             if (upstream.status === 200) return res.json(upstream.data);
             const reason = upstream.data?.details?.error;
             const messages: Record<string,string> = {
@@ -66,9 +66,18 @@ app.post(['/', '/api/auth', '/api/youtube/callback'], async (req, res) => {
         return res.status(500).json({ error: "Server configuration error." });
     }
 
+    const callbackOrigins = [FRONTEND_URL, process.env.ANDROID_APP_ORIGINS || '']
+        .flatMap(value => value.split(','))
+        .map(value => value.trim().replace(/\/$/, ''))
+        .filter(Boolean)
+        .map(origin => `${origin}/youtube-auth`);
+    const callbackUrl = typeof redirect_uri === 'string' && callbackOrigins.includes(redirect_uri)
+        ? redirect_uri
+        : REDIRECT_URI;
+
     try {
         console.log("Attempting to exchange authorization code for access token");
-        console.log("Redirect URI:", REDIRECT_URI);
+        console.log("Redirect URI:", callbackUrl);
 
         // 1. Exchange authorization code for access token
         const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
@@ -77,7 +86,7 @@ app.post(['/', '/api/auth', '/api/youtube/callback'], async (req, res) => {
             code,
             code_verifier,
             grant_type: 'authorization_code',
-            redirect_uri: REDIRECT_URI,
+            redirect_uri: callbackUrl,
         }, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
